@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quant Brain — Belief Board</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface2: #1a1a28;
+  --border: #2a2a3a;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --green: #2ecc71;
+  --yellow: #f39c12;
+  --red: #e74c3c;
+  --blue: #3498db;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+a { color: var(--blue); text-decoration: none; }
+
+/* Layout */
+.wrapper { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.main { flex: 1; padding: 24px 32px; max-width: 960px; }
+
+/* Sidebar */
+.sidebar h1 { font-size: 1.3em; margin-bottom: 4px; }
+.sidebar .caption { color: var(--text-dim); font-size: 0.85em; margin-bottom: 16px; }
+.sidebar hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.sidebar h3 { font-size: 0.95em; margin-bottom: 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.sidebar .guide-item { margin: 4px 0; font-size: 0.9em; }
+.sidebar pre { background: var(--surface2); padding: 8px; border-radius: 6px; font-size: 0.85em; white-space: pre-wrap; overflow-x: auto; }
+.review-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  font-size: 0.85em;
+}
+.review-item .mat { color: var(--yellow); font-weight: bold; }
+
+/* Main */
+.main h1 { font-size: 1.5em; margin-bottom: 20px; }
+.main h2 { font-size: 1.15em; margin: 24px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+
+/* Filters */
+.filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.filter-group { display: flex; gap: 4px; align-items: center; }
+.filter-group label { color: var(--text-dim); font-size: 0.85em; margin-right: 6px; }
+.filter-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.filter-btn.active { border-color: var(--blue); color: var(--blue); background: rgba(52,152,219,0.1); }
+.filter-btn:hover { border-color: var(--text-dim); }
+.sort-select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.85em;
+}
+
+/* Theme card */
+.theme-card {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin: 12px 0;
+}
+.theme-card h3 { font-size: 1em; margin-bottom: 8px; }
+.theme-beliefs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.theme-belief-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.theme-belief-tag:hover { opacity: 0.8; }
+.tag-active { border-color: var(--green); color: var(--green); }
+.tag-quarantine { border-color: var(--yellow); color: var(--yellow); }
+.tag-invalidated { border-color: var(--red); color: var(--red); }
+.tag-archived { border-color: #666; color: #666; }
+.theme-meta { color: var(--text-dim); font-size: 0.85em; margin-top: 6px; }
+
+/* Belief card */
+.belief-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin: 14px 0;
+  transition: border-color 0.2s;
+}
+.belief-card:hover { border-color: var(--text-dim); }
+.belief-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.belief-title { font-size: 1.05em; font-weight: bold; flex: 1; }
+.belief-meta { text-align: right; min-width: 100px; }
+.belief-conf { font-size: 1.4em; font-weight: bold; }
+.status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: bold;
+  margin-top: 4px;
+}
+.status-active { background: var(--green); color: #000; }
+.status-quarantine { background: var(--yellow); color: #000; }
+.status-invalidated { background: var(--red); color: #fff; }
+.status-archived { background: #666; color: #fff; }
+
+.status-desc { color: var(--text-dim); font-size: 0.85em; margin: 4px 0 8px; }
+
+/* Confidence bar */
+.conf-bar-bg {
+  background: #333;
+  border-radius: 4px;
+  height: 5px;
+  margin: 8px 0;
+}
+.conf-bar-fill { height: 5px; border-radius: 4px; transition: width 0.3s; }
+
+/* Thesis */
+.thesis {
+  background: var(--surface2);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+}
+
+/* Collapsible */
+.collapsible { margin: 6px 0; }
+.collapsible-header {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.9em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  transition: background 0.15s;
+}
+.collapsible-header:hover { background: var(--border); }
+.collapsible-header .arrow { transition: transform 0.2s; }
+.collapsible-header.open .arrow { transform: rotate(90deg); }
+.collapsible-body {
+  display: none;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: var(--bg);
+}
+.collapsible-body.open { display: block; }
+
+/* Evidence items */
+.evidence-item {
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 6px;
+  font-size: 0.9em;
+}
+.evidence-sup { background: rgba(46,204,113,0.08); border-left: 3px solid var(--green); }
+.evidence-con { background: rgba(231,76,60,0.08); border-left: 3px solid var(--red); }
+.ev-score { color: var(--text-dim); font-size: 0.85em; }
+.ev-claim { color: var(--text-dim); font-size: 0.85em; font-style: italic; margin-top: 2px; }
+
+/* Graph chain */
+.chain-code {
+  background: var(--surface2);
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+/* Comment */
+.comment-item { margin: 6px 0; font-size: 0.9em; }
+.comment-meta { color: var(--text-dim); font-size: 0.85em; }
+
+/* Footer */
+.footer {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.8em;
+  padding: 24px;
+  border-top: 1px solid var(--border);
+  margin-top: 40px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .wrapper { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    min-width: auto;
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .main { padding: 16px; }
+  .belief-header { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h1>Quant Brain</h1>
+  <div class="caption" id="sidebar-stats"></div>
+  <hr>
+  <h3>Status Guide</h3>
+  <div class="guide-item">&#x1f7e2; <b>active</b> &mdash; verified</div>
+  <div class="guide-item">&#x1f7e1; <b>quarantine</b> &mdash; accumulating</div>
+  <div class="guide-item">&#x1f534; <b>invalidated</b> &mdash; refuted</div>
+  <div class="guide-item">&#x26aa; <b>archived</b> &mdash; expired</div>
+  <hr>
+  <h3>Confidence</h3>
+  <div style="font-size:0.85em;color:var(--text-dim);">
+    Auto = support / (support + contra)<br>
+    Each evidence: source_weight &times; freshness
+  </div>
+  <hr>
+  <h3>Cycle</h3>
+  <pre id="cycle-status"></pre>
+  <div id="review-queue-section"></div>
+  <hr>
+  <div style="font-size:0.8em;color:var(--text-dim);" id="generated-date"></div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+  <h1>Belief Board</h1>
+
+  <!-- Themes -->
+  <div id="themes-section"></div>
+
+  <!-- Filters -->
+  <h2>Beliefs</h2>
+  <div class="filters">
+    <div class="filter-group">
+      <label>Status:</label>
+      <button class="filter-btn active" data-status="active" onclick="toggleFilter(this)">active</button>
+      <button class="filter-btn active" data-status="quarantine" onclick="toggleFilter(this)">quarantine</button>
+      <button class="filter-btn" data-status="invalidated" onclick="toggleFilter(this)">invalidated</button>
+      <button class="filter-btn" data-status="archived" onclick="toggleFilter(this)">archived</button>
+    </div>
+    <div class="filter-group">
+      <label>Sort:</label>
+      <select class="sort-select" id="sort-select" onchange="renderBeliefs()">
+        <option value="conf-high">Confidence (high)</option>
+        <option value="conf-low">Confidence (low)</option>
+        <option value="date-new">Date (new)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Belief Cards -->
+  <div id="beliefs-section"></div>
+
+  <div class="footer">
+    Quant Brain v0.2 &mdash; Read-only snapshot.<br>
+    Generated: <span id="footer-date"></span>
+  </div>
+</div>
+</div>
+
+<script>
+// ─── DATA (injected by build script) ───
+const DATA = {"generated": "2026-02-20", "stats": {"total_nodes": 177, "total_edges": 170, "by_type": {"belief": 9, "theme": 1, "fact": 112, "hypothesis": 2, "axiom": 1, "concept": 22, "indicator": 3, "question": 27}, "by_layer": {"belief": 10, "episodic": 141, "semantic": 26}, "by_status": {"quarantine": 3, "active": 147, "answered": 7, "pending": 20}, "by_relation": {"supports": 41, "contains": 4, "measured_by": 52, "source_of": 18, "pressures": 10, "drives": 13, "contradicts": 12, "conditions": 4, "contextualizes": 6, "weakens": 1, "correlates": 2, "decomposes": 7}, "connected_components": 40}, "themes": [{"id": "THM_LIQUIDITY_CROSSROADS_2026", "title": "2026 글로벌 유동성 긴축 교차점", "content": "4개 독립 경로가 2026년 상반기에 동시 수렴:\n\n1. QT 종료(2025-12) 후에도 TGA 세수 → Reserve scarcity 접근 (BLF_RESERVE_SCARCITY)\n   - RRP 버퍼 고갈 확인 (HYP_RRP_BUFFER_GONE)\n   - Q2 Reserve Scarcity 접근 (HYP_RESERVE_SCARCITY_Q2)\n   - 4월 세수 시즌 squeeze (HYP_APRIL_SQUEEZE)\n2. BOJ 정상화 → JGB/CLO/캐리 삼중 압박 (BLF_BOJ_RATE)\n   - 6월 인상 시 시장 영향 시나리오 (HYP_BOJ_JUNE_HIKE_IMPACT)\n3. AI capex 채권 홍수 → IG 크레딧 흡수 (BLF_AI_CREDIT)\n4. 규제 방어벽 무력화 → 위 3개 충격 흡수 능력 저하 (BLF_REGULATION_HOLLOW)\n\n개별 경로는 각각 관리 가능. 문제는 동시 발생 시 비선형 증폭.\n특히 4번(규제)이 1-3번 충격의 완충장치가 되어야 하는데 작동 안 함.\n\n핵심 모니터링: 경로들이 시간적으로 겹치는 시점 (2026년 4월 세수 시즌).\n", "convergence_window": "2026-Q2", "risk_type": "non-linear amplification", "beliefs": [{"id": "BLF_RESERVE_SCARCITY", "title": "Reserve Scarcity 접근 가능성 (2026 Q2)", "status": "quarantine", "confidence": 0.624, "is_sub": false}, {"id": "BLF_BOJ_RATE", "title": "BOJ 정상화 → 글로벌 장기금리 + CLO + 캐리 동시 압박 (2026 상반기 최대 비대칭 리스크)", "status": "quarantine", "confidence": 0.768, "is_sub": false}, {"id": "BLF_AI_CREDIT", "title": "AI Capex 채권 발행이 크레딧 시장 유동성을 압도할 수 있음", "status": "quarantine", "confidence": 0.674, "is_sub": false}, {"id": "BLF_REGULATION_HOLLOW", "title": "규제적 방어벽이 실질적으로 작동하지 않음", "status": "active", "confidence": 0.808, "is_sub": false}, {"id": "HYP_RRP_BUFFER_GONE", "title": "RRP 버퍼 고갈 후 Reserve 쿠션 취약", "status": "active", "confidence": 0.612, "is_sub": true}, {"id": "HYP_RESERVE_SCARCITY_Q2", "title": "2026 Q2 Reserve Scarcity 접근", "status": "active", "confidence": 0.638, "is_sub": true}, {"id": "HYP_APRIL_SQUEEZE", "title": "2026년 4월 세수 시즌 reserve squeeze 시나리오", "status": "active", "confidence": 0.471, "is_sub": true}, {"id": "HYP_BOJ_JUNE_HIKE_IMPACT", "title": "BOJ 6월 인상 시 시장 영향 시나리오", "status": "active", "confidence": 0.709, "is_sub": true}, {"id": "HYP_PC_HIDDEN_STRESS", "title": "Private Credit 디폴트율이 실제보다 과소 계상 — PIK/수정이 부실 은닉", "status": "active", "confidence": 0.683, "is_sub": true}]}], "beliefs": [{"id": "BLF_REGULATION_HOLLOW", "title": "규제적 방어벽이 실질적으로 작동하지 않음", "status": "active", "confidence": 0.808, "created": "2026-02-18", "content": "인과 사슬 (structural_logic — 데이터 검증 불필요):\n1. Basel III Endgame → capital neutral 전환 = 자본 인상 없음\n2. 스트레스 테스트 시나리오 전년 대비 완화 (모든 변수 축소)\n3. PE 노출 market shock에서 제거 → 손실 과소 계산\n4. Private Credit $2T 아예 미테스트\n5. NBFI exploratory analysis는 자본 요건에 영향 없음\n\n결론: 규제 지표를 신뢰하지 말고 시장 가격 지표를 봐야 함.\nMFA(업계 로비) 출처를 무비판적으로 인용하면 안 됨.\n", "test_criteria": "구조적 논리이므로 직접 테스트 불가.\n전제 변경 시만 재검증: Basel III가 실제로 capital-additive로 바뀌거나,\nPC가 스트레스 테스트에 포함되거나, 시나리오 가혹도가 상향될 때.\n", "test_window": "", "monitor_indicators": ["Basel III Endgame 최종안 (2026 Q1 예정)", "Fed 스트레스 테스트 2026 시나리오 발표"], "user_comments": [], "breakdown": {"supporting": [{"name": "Federal Reserve", "date": "2025-06-15", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.382, "user_override": 1.0, "score": 0.325}, {"name": "Federal Reserve", "date": "2025-06-15", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.382, "user_override": 1.0, "score": 0.325}, {"name": "CNBC", "date": "2025-11-15", "credibility_type": "media", "source_weight": 0.4, "freshness": 0.688, "user_override": 1.0, "score": 0.275}, {"name": "Bloomberg", "date": "2026-01-15", "credibility_type": "media", "source_weight": 0.4, "freshness": 0.871, "user_override": 1.0, "score": 0.348}, {"name": "Capstone DC", "date": "2026-01-15", "credibility_type": "media", "source_weight": 0.4, "freshness": 0.871, "user_override": 1.0, "score": 0.348}, {"name": "OCC Bulletin 2025-44", "date": "2025-12-05", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.743, "user_override": 1.0, "score": 0.52}, {"name": "Fifth Circuit Court", "date": "2024-06-05", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.09, "user_override": 1.0, "score": 0.063}, {"name": "Cornerstone Research", "date": "2025-12-31", "credibility_type": "academic", "source_weight": 0.8, "freshness": 0.822, "user_override": 1.0, "score": 0.657}, {"name": "Treasury.gov FSOC", "date": "2025-12-11", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.761, "user_override": 1.0, "score": 0.533}, {"name": "OCC/Fed", "date": "2025-11-15", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.688, "user_override": 1.0, "score": 0.482}], "contradicting": [{"name": "Basel Committee (BCBS)", "date": "2025-12-15", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.773, "user_override": 1.0, "score": 0.541}, {"name": "FDIC Acting Chair Hill", "date": "2025-09-15", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.544, "user_override": 1.0, "score": 0.381}], "support_score": 3.876, "contra_score": 0.922, "confidence": 0.808, "as_of": "2026-02-20"}, "graph_chain": "<- [source_of] (structural) Fed Stress Test — Structural Weaknesses\n      <- [drives] (structural) [concept] Basel III Endgame (사실상 폐기)\n         Note: Basel III capital neutral → 자본 인상 없음 → 스트레스 테스트의 실효성 약화\n    <- [source_of] (structural) Basel III Endgame (사실상 폐기)\n    <- [source_of] (empirical) 은행의 Private Credit 대출 ~$300B, 상위 5개 펀드에 $100B 집중\n       Note: PC $300B 은행 노출이 스트레스 테스트 밖 = 규제 사각\n    <- [supports] (?) OCC: 레버리지드 렌딩 가이던스 폐기 (2025-12-05)\n       Note: 레버리지론 정량 기준 폐지\n    <- [supports] (?) Boston Fed: 은행 PC 펀드 익스포저 $300B (대형은행 대출 14%)\n       Note: 은행-PC $300B 연결 + OCC 가이던스 폐기 = 규제 방어벽 취약\n    <- [supports] (?) Basel III Endgame: 19%→9%→capital neutral(~0%), 3년+ 지연\n       Note: 19%→capital neutral: 자본 인상 사실상 무산\n    <- [supports] (?) Private Fund Adviser Rules 전부 법원에서 무효화 (2024-06)\n       Note: PC 감독 규칙 법원 무효화\n    <- [supports] (?) SEC 집행건수 313건 (10년 최저, FY2023 대비 -38%)\n       Note: SEC 집행 10년 최저\n    <- [supports] (?) FSOC NBFI 지정: 현재 0건, 지정 프레임워크 약화 검토 중\n       Note: NBFI 지정 0건, 프레임워크 약화 검토\n    <- [supports] (?) Enhanced SLR 완화 확정 (2025-11), 2026-04 시행\n       Note: Enhanced SLR 완화\n    <- [supports] (?) CFPB 사실상 기능 정지 (2025-02~, 법원 명령에도 불구)\n       Note: 소비자보호 기관 사실상 기능 정지\n    <- [supports] (?) Fed 스트레스 테스트 개편: SCB -23bp, 2년 평균화\n       Note: SCB -23bp, 2년 평균화로 스트레스 테스트 약화", "supporting_evidence": [{"name": "Federal Reserve", "date": "2025-06-15", "claim": "2025 severely adverse scenario milder than 2024 on all variables", "credibility_type": "central_bank"}, {"name": "Federal Reserve", "date": "2025-06-15", "claim": "PE exposure removed from global market shock component in 2025", "credibility_type": "central_bank"}, {"name": "CNBC", "date": "2025-11-15", "claim": "Private credit $2T not measured or tested by Fed stress tests", "credibility_type": "media"}, {"name": "Bloomberg", "date": "2026-01-15", "claim": "Basel III Endgame to be 'roughly capital neutral' under Bowman", "credibility_type": "media"}, {"name": "Capstone DC", "date": "2026-01-15", "claim": "All three regulators (Fed, OCC, FDIC) consistently pro-industry under current admin", "credibility_type": "media"}, {"name": "OCC Bulletin 2025-44", "date": "2025-12-05", "claim": "Leveraged Lending Guidance rescinded. Replaced with principles-based (no quantitative thresholds).", "credibility_type": "regulator"}, {"name": "Fifth Circuit Court", "date": "2024-06-05", "claim": "All four Private Fund Adviser Rules vacated. No replacement.", "credibility_type": "regulator"}, {"name": "Cornerstone Research", "date": "2025-12-31", "claim": "SEC enforcement 313 actions (10yr low, -38% from FY2023). $808M settlements.", "credibility_type": "academic"}, {"name": "Treasury.gov FSOC", "date": "2025-12-11", "claim": "Zero active NBFI designations. Designation framework under review for weakening.", "credibility_type": "regulator"}, {"name": "OCC/Fed", "date": "2025-11-15", "claim": "Enhanced SLR reduced. CFPB functionally impaired despite court orders.", "credibility_type": "regulator"}], "contradicting_evidence": [{"name": "Basel Committee (BCBS)", "date": "2025-12-15", "claim": "International Basel III standards remain unchanged; US deviation creates regulatory arbitrage pressure for eventual convergence", "credibility_type": "regulator"}, {"name": "FDIC Acting Chair Hill", "date": "2025-09-15", "claim": "Some form of capital strengthening still expected even under capital-neutral framework", "credibility_type": "regulator"}]}, {"id": "BLF_BOJ_RATE", "title": "BOJ 정상화 → 글로벌 장기금리 + CLO + 캐리 동시 압박 (2026 상반기 최대 비대칭 리스크)", "status": "quarantine", "confidence": 0.768, "created": "2026-02-18", "content": "경로 1: BOJ QT + 금리 인상 → JGB 금리 상승 → 일본 기관 본국 송환\n  → US Treasury 매도 → 장기금리 상승 → 레버리지 스택 margin 압력.\n  Goldman 추정: JGB 10bp shock → UST 2-3bp 전파.\n  JGB 30Y 추가 100bp 시 UST에 20-30bp 영향.\n\n경로 2: 일본 은행이 CLO AAA 대규모 보유\n  → BOJ 정상화 시 달러 자산 재조정 → CLO AAA 매도 압력\n  → CLO 스프레드 확대 → 신규 CLO 발행 비용 증가\n  → 레버리지드 론 수요 감소 → 기업 차입 비용 상승.\n\n두 경로가 합류하면 교차 스트레스.\n", "test_criteria": "- JGB 30Y 추가 100bp 상승 시 UST 20-30bp 전파 확인\n- CLO AAA 스프레드 S+150bp 초과 여부\n- 일본 투자자 해외채권 순매도 전환 여부 (BOJ 월간 통계)\n- 2026 Q1 일본 회계연도말 리밸런싱 패턴\n", "test_window": "", "monitor_indicators": ["USD/JPY CCBS 3M", "JGB 30Y yield", "CLO AAA spread (S+basis)", "Japan investor foreign bond net purchases"], "user_comments": [], "breakdown": {"supporting": [{"name": "Goldman Sachs", "date": "2025-12-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.773, "user_override": 1.0, "score": 0.386}, {"name": "PineBridge", "date": "2025-11-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.688, "user_override": 1.0, "score": 0.344}, {"name": "BOJ", "date": "2025-12-15", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.773, "user_override": 1.0, "score": 0.657}, {"name": "Bloomberg", "date": "2025-12-31", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.822, "user_override": 1.0, "score": 0.822}], "contradicting": [{"name": "HSBC/State Street", "date": "2025-10-31", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.65, "user_override": 1.0, "score": 0.325}, {"name": "State Street", "date": "2025-11-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.688, "user_override": 1.0, "score": 0.344}], "support_score": 2.209, "contra_score": 0.669, "confidence": 0.768, "as_of": "2026-02-20"}, "graph_chain": "<- [source_of] (empirical) BOJ Balance Sheet & Normalization\n      <- [drives] (empirical) [fact] Rengo 春闘 2026: 임금인상 5%+ 요구, 기업 조기 수용\n         Date: 2026-02-19\n         Note: 春闘 5%+ 요구 + 기업 수용 → BOJ 인상 근거 강화\n      <- [drives] (empirical) [fact] 일본 CPI 2025.12: 코어코어 2.9%, 45개월 연속 2%+ 초과\n         Data: 2.9 pct_yoy (2025-12-31)\n         Note: 코어코어 2.9%, 45개월 연속 2%+ → BOJ 인상 근거\n      <- [drives] (empirical) [fact] 일본 생보 UST→JGB 전환: $2-4B/월, ESR 규제 3월 시행\n         Date: 2026-02-15\n         Note: 생보 UST→JGB 전환 $2-4B/월 + ESR 규제 가속\n    <- [source_of] (hypothetical) CLO (Collateralized Loan Obligation)\n      <- [pressures] (hypothetical) [concept] BOJ Balance Sheet & Normalization\n         Note: 일본 은행 CLO AAA 보유 → BOJ 정상화 시 매도 압력\n        <- [drives] (empirical) [fact] Rengo 春闘 2026: 임금인상 5%+ 요구, 기업 조기 수용\n           Date: 2026-02-19\n           Note: 春闘 5%+ 요구 + 기업 수용 → BOJ 인상 근거 강화\n        <- [drives] (empirical) [fact] 일본 CPI 2025.12: 코어코어 2.9%, 45개월 연속 2%+ 초과\n           Data: 2.9 pct_yoy (2025-12-31)\n           Note: 코어코어 2.9%, 45개월 연속 2%+ → BOJ 인상 근거\n        <- [drives] (empirical) [fact] 일본 생보 UST→JGB 전환: $2-4B/월, ESR 규제 3월 시행\n           Date: 2026-02-15\n           Note: 생보 UST→JGB 전환 $2-4B/월 + ESR 규제 가속\n      <- [source_of] (empirical) [fact] 일본 은행 CLO AAA 보유 규모 추정\n         Date: 2026-02-01\n         Note: 일본 은행 CLO AAA $125-140B 보유 → 매도 시 시장 영향\n      <- [conditions] (empirical) [fact] CLO AAA 스프레드 임계점 분석\n         Date: 2026-02-15\n         Note: S+150bp = CLO economics 악화, S+200bp = 발행 중단\n      <- [source_of] (empirical) [fact] Private Credit CLO 비중 20-25% (2025), 수년 전 10%에서 급증\n         Data: 25 pct of CLO (2025-12-31)\n         Note: PC CLO 25% = CLO 시장의 PC 의존도 증가\n    <- [source_of] (empirical) 일본 투자자 해외채권 순매수 최신 (2025-12)\n       Note: 일본 투자자 해외채권 흐름이 BOJ belief의 핵심 반증/지지\n    <- [supports] (hypothetical) BOJ 6월 인상 시 시장 영향 시나리오\n       Note: 6월 인상 시나리오가 BOJ belief 경로를 구체화\n      <- [supports] (empirical) [fact] BOJ 위원 Masu: 금리 인상 계속 필요 (2026-02-06)\n         Date: 2026-02-06\n         Note: 보드멤버 추가 인상 필요 발언 = 6월 인상 시나리오 강화\n      <- [supports] (empirical) [fact] 일본 은행 금리 전달: MUFG 단프라 2.125% (30년 래 최고)\n         Date: 2026-02-02\n         Note: 금리전달 정상 → 추가 인상의 실물 영향 확인\n      <- [supports] (?) [fact] Rengo 2026 Shunto: 5%+ 목표, 실제 조합 요구 5.85% (가중평균)\n         Date: 2026-02-19\n         Note: 5%+ 임금 요구 → BOJ 인상 조건 충족 방향\n      <- [supports] (?) [fact] BOJ OIS: 3월 19%, 6월 base case, terminal 1.00-1.50%\n         Date: 2026-02-18\n         Note: OIS June base case, terminal 1.00-1.50%\n    <- [supports] (hypothetical) BOJ 인상 → 일본 은행 CLO 축소 → 스프레드 +30-50bp 시나리오\n       Note: BOJ → CLO 경로의 구체적 수치 시나리오\n    <- [supports] (empirical) Rengo 春闘 2026: 임금인상 5%+ 요구, 기업 조기 수용\n       Note: 임금 5%+ → BOJ 인상 → 글로벌 금리 압력\n    <- [supports] (empirical) 일본 생보 UST→JGB 전환: $2-4B/월, ESR 규제 3월 시행\n       Note: 생보 리패트리에이션 → UST 수요 감소 → 글로벌 금리 상방 압력\n    <- [supports] (?) BOJ 12월 인상 0.50%→0.75% (1995년 이래 최고), 만장일치\n       Note: 12월 0.75% 인상 — 정상화 진행 중", "supporting_evidence": [{"name": "Goldman Sachs", "date": "2025-12-15", "claim": "JGB 10bp shock → UST 2-3bp transmission", "credibility_type": "sell_side"}, {"name": "PineBridge", "date": "2025-11-15", "claim": "일본/미국 은행이 CLO primary market 주요 매수자", "credibility_type": "sell_side"}, {"name": "BOJ", "date": "2025-12-15", "claim": "정책금리 0.75%로 인상, JGB 매입 지속 감축", "credibility_type": "central_bank"}, {"name": "Bloomberg", "date": "2025-12-31", "claim": "JGB 30Y 사상 최고 3.689%", "credibility_type": "primary_data"}], "contradicting_evidence": [{"name": "HSBC/State Street", "date": "2025-10-31", "claim": "일본 투자자 2025년 1-10월 해외채권 순매수 ¥11.7T (전년 대비 3배)", "credibility_type": "sell_side"}, {"name": "State Street", "date": "2025-11-15", "claim": "NISA 할당, 연기금 등 구조적 흐름이 외국 자산 보유를 고정 → 대규모 본국 송환 unlikely", "credibility_type": "sell_side"}]}, {"id": "HYP_BOJ_JUNE_HIKE_IMPACT", "title": "BOJ 6월 인상 시 시장 영향 시나리오", "status": "active", "confidence": 0.709, "created": "2026-02-19", "content": "6월 인상 (0.75%→1.00%, BOJ OIS 60% 반영) 시:\n1. JGB 30Y: 현재 3.39%(Trading Economics 2/17) + 시나리오 +20-30bp = 3.59-3.69% 레인지\n2. UST 10Y: Goldman 추정 2-3bp/10bp JGB shock → +4-9bp 전파\n3. CCBS: 현재 -45bp → 시나리오 -50~-60bp 악화\n4. USD/JPY: 현재 ¥153.6(2026-02-18 Yahoo Finance) → 시나리오 ¥148-150 (엔 강세)\n5. CLO AAA: 영향 지연 (3-6개월 후 일본 은행 포트폴리오 리밸런싱)\n관건: \"인상 자체\"보다 \"인상 + JGB 매입 감축 동시\" 시 비선형 반응.\n", "test_criteria": "- BOJ 6월 회의에서 실제 인상 여부\n- JGB 30Y 인상 후 +20bp 이상 반응 여부\n- CCBS -50bp 이하 악화 여부\n- 인상 전후 1주 UST 10Y 변동폭\n", "test_window": "2026-Q2", "monitor_indicators": ["BOJ OIS curve (June meeting probability)", "JGB 30Y yield", "USD/JPY CCBS 3M", "UST 10Y yield", "Japan MOF weekly flow data"], "user_comments": [], "breakdown": {"supporting": [{"name": "Goldman Sachs", "date": "2025-12-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.773, "user_override": 1.0, "score": 0.386}, {"name": "Bloomberg OIS", "date": "2026-02-18", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.992, "user_override": 1.0, "score": 0.992}, {"name": "Yahoo Finance", "date": "2026-02-18", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.992, "user_override": 1.0, "score": 0.992}, {"name": "BOJ Board Member Masu", "date": "2026-02-06", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.948, "user_override": 1.0, "score": 0.805}, {"name": "CNBC / BOJ", "date": "2026-01-23", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.898, "user_override": 1.0, "score": 0.763}, {"name": "Bank of America", "date": "2026-02-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.981, "user_override": 1.0, "score": 0.49}], "contradicting": [{"name": "State Street", "date": "2025-11-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.688, "user_override": 1.0, "score": 0.344}, {"name": "Cabinet Office Japan", "date": "2026-02-16", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.985, "user_override": 1.0, "score": 0.985}, {"name": "Capital Economics", "date": "2026-02-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.981, "user_override": 1.0, "score": 0.49}], "support_score": 4.428, "contra_score": 1.819, "confidence": 0.709, "as_of": "2026-02-20"}, "graph_chain": "<- [supports] (empirical) BOJ 위원 Masu: 금리 인상 계속 필요 (2026-02-06)\n       Note: 보드멤버 추가 인상 필요 발언 = 6월 인상 시나리오 강화\n    <- [supports] (empirical) 일본 은행 금리 전달: MUFG 단프라 2.125% (30년 래 최고)\n       Note: 금리전달 정상 → 추가 인상의 실물 영향 확인\n    <- [supports] (?) Rengo 2026 Shunto: 5%+ 목표, 실제 조합 요구 5.85% (가중평균)\n       Note: 5%+ 임금 요구 → BOJ 인상 조건 충족 방향\n    <- [supports] (?) BOJ OIS: 3월 19%, 6월 base case, terminal 1.00-1.50%\n       Note: OIS June base case, terminal 1.00-1.50%", "supporting_evidence": [{"name": "Goldman Sachs", "date": "2025-12-15", "claim": "JGB 10bp shock → UST 2-3bp transmission", "credibility_type": "sell_side"}, {"name": "Bloomberg OIS", "date": "2026-02-18", "claim": "60% probability of June hike priced in. Current policy rate 0.75%.", "credibility_type": "primary_data"}, {"name": "Yahoo Finance", "date": "2026-02-18", "claim": "USD/JPY 153.57. JGB 30Y 3.72%.", "credibility_type": "primary_data"}, {"name": "BOJ Board Member Masu", "date": "2026-02-06", "claim": "추가 금리 인상 계속 필요. 전 위원 Adachi 4월 인상 시사. 금리전달 정상작동(MUFG 단프라 30년 최고).", "credibility_type": "central_bank"}, {"name": "CNBC / BOJ", "date": "2026-01-23", "claim": "BOJ held at 0.75% (8-1 split). Takata dissented for 1.00%. June base case for next hike.", "credibility_type": "central_bank"}, {"name": "Bank of America", "date": "2026-02-15", "claim": "BOJ terminal rate forecast 1.50%. Most aggressive sell-side estimate.", "credibility_type": "sell_side"}], "contradicting_evidence": [{"name": "State Street", "date": "2025-11-15", "claim": "Structural flows (NISA, pensions) anchor foreign asset holdings", "credibility_type": "sell_side"}, {"name": "Cabinet Office Japan", "date": "2026-02-16", "claim": "Q4 2025 GDP +0.1% QoQ (vs +0.4% expected) — 성장 둔화가 인상 시점 지연 가능", "credibility_type": "primary_data"}, {"name": "Capital Economics", "date": "2026-02-15", "claim": "We doubt JGB 10Y will soar a lot more in 2026. JGB 30Y dropped -23bp in 1 month to 3.39%.", "credibility_type": "sell_side"}]}, {"id": "HYP_PC_HIDDEN_STRESS", "title": "Private Credit 디폴트율이 실제보다 과소 계상 — PIK/수정이 부실 은닉", "status": "active", "confidence": 0.683, "created": "2026-02-19", "content": "관찰: PC 디폴트 2.46% vs 신디케이트 4%+\nBUT: PIK 6.0% (2021년 대비 2.3배), 코브넌트 홀리데이 2배\n\n가설: 실질 부실률은 신디케이트론과 유사하거나 더 높음.\n차이의 원인:\n1. PIK = 이자를 현금 대신 원금에 합산 → 디폴트 지연\n2. Amendment/Holiday = 코브넌트 위반을 미위반으로 재분류\n3. 운용사가 mark-to-model → 손실 인식 지연\n4. BDC +33% YoY 성장(Q2 2025, FACT_BDC_MARKET) = 신규 대출이 부실 희석 (denominator 효과)\n\n테스트: PIK 포함 조정 디폴트율 계산 시 4-5% 범위인지 확인.\n", "test_criteria": "- PIK 포함 조정 디폴트율 4-5% 범위 확인 (Proskauer 다음 분기)\n- BDC non-accrual 비율 추가 상승 여부 (TCPC 외 Ares/Blue Owl)\n- Lincoln \"bad PIK\" 비율 6.4%에서 추가 상승 여부\n- SEC 2026 검사에서 밸류에이션 제재 발생 여부\n", "test_window": "2026-H1", "monitor_indicators": ["Proskauer PC Default Index (quarterly)", "Lincoln Senior Debt Index - bad PIK rate", "BDC non-accrual rates (TCPC, ARCC, OBDC)", "SEC enforcement actions on PC valuation", "Fed FSR PC stress mentions"], "user_comments": [], "breakdown": {"supporting": [{"name": "Proskauer", "date": "2026-01-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.871, "user_override": 1.0, "score": 0.435}, {"name": "Industry Report", "date": "2025-12-31", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.822, "user_override": 1.0, "score": 0.411}, {"name": "Lincoln International", "date": "2025-09-30", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.577, "user_override": 1.0, "score": 0.577}, {"name": "Federal Reserve FSR", "date": "2025-11-15", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.688, "user_override": 1.0, "score": 0.585}, {"name": "BlackRock TCPC Filing", "date": "2026-02-01", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.929, "user_override": 1.0, "score": 0.929}], "contradicting": [{"name": "Morningstar DBRS", "date": "2025-12-31", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.822, "user_override": 1.0, "score": 0.411}, {"name": "Morgan Stanley", "date": "2025-12-31", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.822, "user_override": 1.0, "score": 0.411}, {"name": "OFR 2025 Annual Report", "date": "2025-12-15", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.773, "user_override": 1.0, "score": 0.541}], "support_score": 2.937, "contra_score": 1.363, "confidence": 0.683, "as_of": "2026-02-20"}, "graph_chain": "<- [supports] (?) Fed FSR Nov2025: PC 스트레스 시장 참가자 20% 언급\n       Note: Fed FSR: PC 스트레스 20% 언급 → 은닉 부실 가설 지지\n    <- [supports] (?) SEC 2026 검사 우선순위: PC/비유동성 투자 최상위\n       Note: SEC 검사 최상위 = 규제당국도 PC 밸류에이션 우려\n    <- [supports] (?) Lincoln International: 수정활동이 PC 디폴트율 마스킹\n       Note: Lincoln: 수정활동이 디폴트율 마스킹 확인 (bad PIK 6.4%)\n    <- [supports] (?) BlackRock TCP Capital: Q4 2025 NAV -19%, 비발생 9.6%\n       Note: TCPC NAV -19% = BDC 레벨 스트레스 현실화", "supporting_evidence": [{"name": "Proskauer", "date": "2026-01-15", "claim": "Q4 default 2.46% but mid-size borrowers 3.6%", "credibility_type": "sell_side"}, {"name": "Industry Report", "date": "2025-12-31", "claim": "PIK usage 6.0%, covenant holidays doubled QoQ", "credibility_type": "sell_side"}, {"name": "Lincoln International", "date": "2025-09-30", "claim": "Higher default rate disguised by significant amendment activity. Bad PIK 6.4% of loans.", "credibility_type": "primary_data"}, {"name": "Federal Reserve FSR", "date": "2025-11-15", "claim": "PC stress cited by 20% of market contacts (up from ~0%). Opacity key concern.", "credibility_type": "central_bank"}, {"name": "BlackRock TCPC Filing", "date": "2026-02-01", "claim": "NAV -19% Q4, non-accruals 9.6% at cost. Early BDC stress signal.", "credibility_type": "primary_data"}], "contradicting_evidence": [{"name": "Morningstar DBRS", "date": "2025-12-31", "claim": "BDC leverage 0.55-0.8x, well below regulatory max", "credibility_type": "sell_side"}, {"name": "Morgan Stanley", "date": "2025-12-31", "claim": "PC growing to $5T by 2029, institutional demand strong", "credibility_type": "sell_side"}, {"name": "OFR 2025 Annual Report", "date": "2025-12-15", "claim": "BDC/PC fund leverage much lower than banks. Unlikely distress transmits to broader system.", "credibility_type": "regulator"}]}, {"id": "BLF_AI_CREDIT", "title": "AI Capex 채권 발행이 크레딧 시장 유동성을 압도할 수 있음", "status": "quarantine", "confidence": 0.674, "created": "2026-02-18", "content": "2026 IG 총 발행 $2.25T 전망(Breckinridge). AI capex 발행 $129B/6주→연환산 $270B+(파생).\nTreasury $5T(CBO) + IG $2.25T = $7T+ 같은 매수자 풀 경쟁.\n마이너스 금리 채권 소멸(2018 피크 $18.4T, Bloomberg→현재 0, OECD) → 외국인 forced buying 사라짐.\nOracle CDS 139bp 피크(S&P CDS data), Moody's Baa2 negative, BBB- 경고.\nBUT: Meta $30B 4.2x(Wolf Street), Oracle $25B 5.2x 초과신청 = 수요 아직 강건.\n채권 펀드 유입 2025년 $500B(Breckinridge). Big 5 중 4개사 AA- 이상.\n핵심 관건: 공급이 수요를 압도하는 변곡점이 언제인가.\n", "test_criteria": "- IG tech vs IG index 스프레드 차이 확대 여부\n- Oracle 5Y CDS 추가 상승 여부\n- Alphabet/Meta FCF 실적 대비 전망 괴리\n- IG 옥션 bid-to-cover ratio 추이\n", "test_window": "", "monitor_indicators": ["Oracle 5Y CDS", "IG tech spread vs IG index", "Hyperscaler capex/OCF ratio", "IG new issuance concession"], "user_comments": [], "breakdown": {"supporting": [{"name": "CreditSights", "date": "2025-12-31", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.822, "user_override": 1.0, "score": 0.411}, {"name": "JP Morgan", "date": "2025-12-31", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.822, "user_override": 1.0, "score": 0.411}, {"name": "Pivotal Research", "date": "2026-01-15", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.871, "user_override": 1.0, "score": 0.435}, {"name": "BofA", "date": "2025-12-31", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.822, "user_override": 1.0, "score": 0.411}, {"name": "Breckinridge Capital", "date": "2026-02-01", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.929, "user_override": 1.0, "score": 0.465}, {"name": "OECD", "date": "2025-06-15", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.382, "user_override": 1.0, "score": 0.267}, {"name": "Moody's", "date": "2025-12-15", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.773, "user_override": 1.0, "score": 0.541}], "contradicting": [{"name": "Moody's", "date": "2025-12-31", "credibility_type": "regulator", "source_weight": 0.7, "freshness": 0.822, "user_override": 1.0, "score": 0.575}, {"name": "Wolf Street", "date": "2026-02-07", "credibility_type": "media", "source_weight": 0.4, "freshness": 0.951, "user_override": 1.0, "score": 0.38}, {"name": "Breckinridge Capital", "date": "2026-02-01", "credibility_type": "sell_side", "source_weight": 0.5, "freshness": 0.929, "user_override": 1.0, "score": 0.465}], "support_score": 2.941, "contra_score": 1.42, "confidence": 0.674, "as_of": "2026-02-20"}, "graph_chain": "<- [source_of] (empirical) AI Capex Bond Issuance\n      <- [source_of] (empirical) [fact] 2026 IG 총 발행 $2.25T 전망 (사상 최고)\n         Data: 2250 B USD (2026-02-15)\n         Note: AI capex가 IG 총 공급의 12%+ 차지\n    <- [source_of] (empirical) Oracle CDS 139bp 피크 후 하락, 여전히 BBB- 경계\n       Note: Oracle CDS 139bp 피크 = AI credit 카나리아 업데이트\n    <- [source_of] (empirical) IG 스프레드 74-78bp (25년래 최저 근접)\n       Note: IG 78bp = tight에서 공급 충격 취약\n    <- [source_of] (empirical) 글로벌 마이너스 금리 채권 사실상 제로\n       Note: 마이너스 금리 소멸 → 외국인 forced buying 사라짐\n    <- [supports] (hypothetical) 2026 하반기 IG 공급이 수요 흡수 한계 돌파 시나리오\n       Note: IG 흡수 한계 시나리오가 AI credit belief 구체화\n      <- [supports] (?) [fact] IG 발행 YTD $296B (전년비 +31%), Big5 $45B\n         Date: 2026-02-15\n         Note: YTD $296B(+31% YoY) = 공급 가속 확인\n    <- [supports] (?) IG 발행 YTD $296B (전년비 +31%), Big5 $45B\n       Note: Big5 $45B/6주 = AI capex 발행 가속 확인\n    <- [source_of] (empirical) Oracle 5Y CDS 3배+ 상승 (2025.09 이후)\n       Note: Oracle CDS 3배 상승이 AI credit drain의 카나리아", "supporting_evidence": [{"name": "CreditSights", "date": "2025-12-31", "claim": "Big 5 2025 capex $443B (+73% YoY), 2026 $602B (+36%)", "credibility_type": "sell_side"}, {"name": "JP Morgan", "date": "2025-12-31", "claim": "향후 5년 IG 채권 발행 $1.5T 전망", "credibility_type": "sell_side"}, {"name": "Pivotal Research", "date": "2026-01-15", "claim": "Alphabet 2026 FCF 전망 $8.2B (2025년 $73.3B에서 -89%)", "credibility_type": "sell_side"}, {"name": "BofA", "date": "2025-12-31", "claim": "2025 capex/OCF ratio 94%", "credibility_type": "sell_side"}, {"name": "Breckinridge Capital", "date": "2026-02-01", "claim": "2026 IG gross issuance $2.25T forecast, record supply", "credibility_type": "sell_side"}, {"name": "OECD", "date": "2025-06-15", "claim": "2024 first year with no OECD negative-yield issuance, forced buying gone", "credibility_type": "regulator"}, {"name": "Moody's", "date": "2025-12-15", "claim": "Oracle Baa2 negative outlook, BBB- risk", "credibility_type": "regulator"}], "contradicting_evidence": [{"name": "Moody's", "date": "2025-12-31", "claim": "Big 5 credit ratings remain robust (MS AAA, GOOG AA+, META AA-, AMZN AA-)", "credibility_type": "regulator"}, {"name": "Wolf Street", "date": "2026-02-07", "claim": "Oracle $25B deal 5.2x oversubscribed ($129B orders), demand still strong", "credibility_type": "media"}, {"name": "Breckinridge Capital", "date": "2026-02-01", "claim": "$500B taxable bond fund inflows 2025, buyer pool expanding", "credibility_type": "sell_side"}]}, {"id": "HYP_RESERVE_SCARCITY_Q2", "title": "2026 Q2 Reserve Scarcity 접근", "status": "active", "confidence": 0.638, "created": "2026-02-18", "content": "4월 TGA 세수유입 $300-330B(DTS) + RMP 감속 시 reserve scarcity 접근.\n현 reserves $2.9T(Perli) → 4월 TGA swing 후 $2.58T 가능(파생: $2.9T-$0.32T).\nSOFR-IORB 양전환 +6.6bp(NY Fed, 2/17)이 조기경보 시그널.\nFed RMP elevated pace로 상쇄 가능하나 1월 실적 $23B(SOMA) = 목표 $40B 미달.\n완전 scarcity 아닌 \"managed stress + 변동성 증가\" 시나리오가 base case.\n", "test_criteria": "- Reserves $2.7T 이하 도달 여부\n- SOFR-IORB 지속적 양전환\n- 4월 TGA 세수 유입 규모\n- RMP elevated pace 실제 집행 규모\n", "test_window": "2026-Q2", "monitor_indicators": ["SOFR-IORB spread (daily)", "Daily Treasury Statement (TGA)", "Fed RMP purchase volume", "Bank reserves (weekly H.4.1)"], "user_comments": [], "breakdown": {"supporting": [{"name": "US Treasury DTS", "date": "2026-02-15", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.981, "user_override": 1.0, "score": 0.981}, {"name": "Cleveland Fed", "date": "2025-11-15", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.688, "user_override": 1.0, "score": 0.585}, {"name": "NY Fed SOFR data", "date": "2026-02-17", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.989, "user_override": 1.0, "score": 0.989}], "contradicting": [{"name": "NY Fed", "date": "2026-02-12", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.97, "user_override": 1.0, "score": 0.824}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.732, "user_override": 1.0, "score": 0.622}], "support_score": 2.555, "contra_score": 1.446, "confidence": 0.639, "as_of": "2026-02-20"}, "graph_chain": "<- [supports] (empirical) SOFR-IORB 스프레드 양전환 관측 (+6.6bp, 2026-02-17)\n       Note: test criteria (SOFR-IORB 지속적 양전환) 조기 시그널\n    <- [supports] (empirical) RMP 1월 실적 $23B (목표 $40B 미달)\n       Note: RMP 실행 부족 → reserve 보충 지연 → scarcity 리스크 상향", "supporting_evidence": [{"name": "US Treasury DTS", "date": "2026-02-15", "claim": "Historical April TGA swing $300-330B", "credibility_type": "primary_data"}, {"name": "Cleveland Fed", "date": "2025-11-15", "claim": "Scarcity threshold ~$2.5-2.7T", "credibility_type": "central_bank"}, {"name": "NY Fed SOFR data", "date": "2026-02-17", "claim": "SOFR-IORB +6.6bp 양전환 (비계절적) = reserve scarcity 접근 조기 시그널", "credibility_type": "primary_data"}], "contradicting_evidence": [{"name": "NY Fed", "date": "2026-02-12", "claim": "RMP to maintain elevated pace through April tax season", "credibility_type": "central_bank"}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "claim": "QT 공식 종료. 구조적 reserve drain 소멸. 4월 squeeze는 계절적 요인만 남음.", "credibility_type": "central_bank"}]}, {"id": "BLF_RESERVE_SCARCITY", "title": "Reserve Scarcity 접근 가능성 (2026 Q2)", "status": "quarantine", "confidence": 0.624, "created": "2026-02-18", "content": "QT 2025-12-01 공식 종료(FOMC). 현재 RMP $40B/월(NY Fed) T-bill 매입(reserve-additive).\nBUT 4월 TGA 세수 유입 $300-330B(DTS 히스토리) + RMP 감속 예정 → 일시적 reserve 압박.\nReserves $2.9T(Perli), scarcity threshold $2.5-2.7T(Cleveland Fed). 쿠션 $200-400B(파생).\nTGA $1.025T 전망(NY Fed) 시 reserves 압박.\nQT 종료가 구조적 drain을 멈췄지만, 4월 계절적 squeeze 리스크는 잔존.\nBUT TGA 변동성 주간 최대 $333B(DTS 히스토리) → 예측 어려움.\n", "test_criteria": "- SOFR-IORB 비계절적 양전환 지속 여부\n- Reserves $2.7T 이하 도달 여부\n- Fed RMP 감속 시점과 실제 reserve 변화\n- 4월 세수 시즌 전후 TGA 변동\n", "test_window": "2026-Q2", "monitor_indicators": ["SOFR-IORB spread (daily)", "Daily Treasury Statement (TGA)", "Fed RMP purchase volume", "Bank reserves (weekly H.4.1)"], "user_comments": [], "breakdown": {"supporting": [{"name": "NY Fed Roberto Perli", "date": "2026-02-12", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.97, "user_override": 1.0, "score": 0.824}, {"name": "Cleveland Fed", "date": "2025-11-15", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.688, "user_override": 1.0, "score": 0.585}, {"name": "NY Fed SOFR data", "date": "2026-02-17", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.989, "user_override": 1.0, "score": 0.989}], "contradicting": [{"name": "NY Fed", "date": "2026-02-12", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.97, "user_override": 1.0, "score": 0.824}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.732, "user_override": 1.0, "score": 0.622}], "support_score": 2.398, "contra_score": 1.446, "confidence": 0.624, "as_of": "2026-02-20"}, "graph_chain": "<- [source_of] (empirical) Bank Reserves\n      <- [drives] (structural) [concept] ON RRP (Overnight Reverse Repo)\n         Note: RRP 고갈 → QT 충격이 직접 reserves에 전달\n      <- [pressures] (structural) [concept] Treasury General Account (TGA)\n         Note: TGA↑ (세수유입) → reserves 기계적 감소\n        <- [source_of] (empirical) [fact] 2026 미국 국채 조달 ~$5T (적자 $2T + 차환 $3T)\n           Data: 5000 B USD (2026-02-05)\n           Note: Treasury $5T + IG $2.25T = $7T+ 같은 매수자 풀 경쟁\n        <- [source_of] (empirical) [fact] FY2027-28 Treasury 쿠폰 옥션 $1.1T 부족\n           Data: 1100 B_USD (2026-02-03)\n           Note: FY2027-28 coupon auction 부족 → 향후 TGA/이자비용 부담 증가\n      <- [conditions] (structural) [concept] Reserve Scarcity Threshold\n         Note: Reserve scarcity threshold 정의\n      <- [supports] (empirical) [concept] Reserve Management Purchases (RMP)\n         Note: T-bill 매입으로 reserve 보충\n    <- [supports] (empirical) 2026년 4월 세수 시즌 reserve squeeze 시나리오\n       Note: 4월 squeeze 시나리오가 reserve scarcity belief 강화\n      <- [supports] (empirical) [fact] SOFR-IORB 스프레드 양전환 관측 (+6.6bp, 2026-02-17)\n         Data: 6.6 bp (2026-02-17)\n         Note: 4월 전 2월에 이미 SOFR>IORB = 버퍼 부족 사전 시그널\n      <- [supports] (empirical) [fact] RMP 1월 실적 $23B (목표 $40B 미달)\n         Data: 23 B_USD (2026-02-01)\n         Note: RMP 1월 $23B(목표 58%) → reserve 보충 지연\n      <- [supports] (?) [fact] SOFR-IORB 스프레드 구조적 양전환 (2025-2026)\n         Data: 6 bp spread (2026-02-17)\n         Note: 이미 2월에 SOFR 양전환 — 4월 세수 전에도 스트레스\n    <- [supports] (empirical) SOFR-IORB 스프레드 양전환 관측 (+6.6bp, 2026-02-17)\n       Note: reserve scarcity 접근 조기경보 시그널\n    <- [supports] (hypothetical) RRP 버퍼 고갈 후 Reserve 쿠션 취약\n       Note: RRP 버퍼 소멸 → reserve scarcity 경로 열림\n      <- [supports] (empirical) [fact] SOFR-IORB 스프레드 양전환 관측 (+6.6bp, 2026-02-17)\n         Data: 6.6 bp (2026-02-17)\n         Note: test criteria (SOFR-IORB 비계절적 양전환) 첫 충족\n      <- [supports] (empirical) [fact] SRF 연말 사용 패턴: $75B 스파이크 후 $0\n         Data: 75 B_USD (2026-01-15)\n         Note: SRF 스티그마 → 유동성 안전판 실효성 의문\n      <- [supports] (?) [fact] SOFR-IORB 스프레드 구조적 양전환 (2025-2026)\n         Data: 6 bp spread (2026-02-17)\n         Note: SOFR-IORB 구조적 양전환이 reserve 쿠션 취약을 직접 증거\n      <- [supports] (?) [fact] Dallas Fed: 은행의 비탄력적 repo 공급이 SOFR 변동성 구조적 원인\n         Date: 2026-02-12\n         Note: 은행 비탄력성이 aggregate reserve 충분해도 SOFR 변동성 유발\n    <- [supports] (hypothetical) 2026 Q2 Reserve Scarcity 접근\n       Note: Q2 세수 시즌 scarcity 시나리오\n      <- [supports] (empirical) [fact] SOFR-IORB 스프레드 양전환 관측 (+6.6bp, 2026-02-17)\n         Data: 6.6 bp (2026-02-17)\n         Note: test criteria (SOFR-IORB 지속적 양전환) 조기 시그널\n      <- [supports] (empirical) [fact] RMP 1월 실적 $23B (목표 $40B 미달)\n         Data: 23 B_USD (2026-02-01)\n         Note: RMP 실행 부족 → reserve 보충 지연 → scarcity 리스크 상향", "supporting_evidence": [{"name": "NY Fed Roberto Perli", "date": "2026-02-12", "claim": "Reserves $2.9T, RMP to maintain ample reserves through tax season", "credibility_type": "central_bank"}, {"name": "Cleveland Fed", "date": "2025-11-15", "claim": "GDP 8-10% = ample reserves, scarcity threshold ~$2.5-2.7T", "credibility_type": "central_bank"}, {"name": "NY Fed SOFR data", "date": "2026-02-17", "claim": "SOFR-IORB +6.6bp 양전환 (2월 중순 비계절적) = reserve scarcity 조기경보", "credibility_type": "primary_data"}], "contradicting_evidence": [{"name": "NY Fed", "date": "2026-02-12", "claim": "RMP explicitly designed to prevent reserve scarcity, elevated pace through April", "credibility_type": "central_bank"}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "claim": "QT 공식 종료. 구조적 reserve drain 소멸. Reserve replenishment 가능.", "credibility_type": "central_bank"}]}, {"id": "HYP_RRP_BUFFER_GONE", "title": "RRP 버퍼 고갈 후 Reserve 쿠션 취약", "status": "active", "confidence": 0.612, "created": "2026-02-18", "content": "RRP 고갈($6B) 후 reserve 쿠션만 남은 상태.\nSOFR-IORB 스프레드 비계절적 양전환(+6.6bp, 2026-02-17) 관측.\nQT는 2025-12-01 공식 종료. 현재 RMP $40B/월 T-bill 매입(reserve-additive).\nBUT reserves $2.9T(H.4.1)는 QT 종료 후에도 scarcity threshold $2.5-2.7T(Cleveland Fed) 근접.\n4월 TGA 세수 유입($300-330B)이 일시 reserve 압박 요인으로 남음.\n단, Fed가 SRF full allotment 등 백스톱 강화 중.\n", "test_criteria": "SOFR-IORB 스프레드의 비계절적 확대 빈도 증가 여부", "test_window": "", "monitor_indicators": ["SOFR-IORB spread (daily)", "ON RRP balance", "Reserve balances (H.4.1 weekly)", "SRF usage frequency"], "user_comments": [], "breakdown": {"supporting": [{"name": "Wolf Street", "date": "2026-01-05", "credibility_type": "media", "source_weight": 0.4, "freshness": 0.838, "user_override": 1.0, "score": 0.335}, {"name": "Federal Reserve H.4.1", "date": "2026-02-12", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.97, "user_override": 1.0, "score": 0.97}, {"name": "NY Fed SOFR data", "date": "2026-02-17", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.989, "user_override": 1.0, "score": 0.989}, {"name": "Dallas Federal Reserve", "date": "2026-02-12", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.97, "user_override": 1.0, "score": 0.824}, {"name": "The Daily Economy", "date": "2026-02-15", "credibility_type": "media", "source_weight": 0.4, "freshness": 0.981, "user_override": 1.0, "score": 0.392}], "contradicting": [{"name": "NY Fed", "date": "2026-02-12", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.97, "user_override": 1.0, "score": 0.824}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.732, "user_override": 1.0, "score": 0.622}, {"name": "FOMC Minutes Jan 2026", "date": "2026-01-28", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.915, "user_override": 1.0, "score": 0.778}], "support_score": 3.51, "contra_score": 2.224, "confidence": 0.612, "as_of": "2026-02-20"}, "graph_chain": "<- [supports] (empirical) SOFR-IORB 스프레드 양전환 관측 (+6.6bp, 2026-02-17)\n       Note: test criteria (SOFR-IORB 비계절적 양전환) 첫 충족\n    <- [supports] (empirical) SRF 연말 사용 패턴: $75B 스파이크 후 $0\n       Note: SRF 스티그마 → 유동성 안전판 실효성 의문\n    <- [supports] (?) SOFR-IORB 스프레드 구조적 양전환 (2025-2026)\n       Note: SOFR-IORB 구조적 양전환이 reserve 쿠션 취약을 직접 증거\n    <- [supports] (?) Dallas Fed: 은행의 비탄력적 repo 공급이 SOFR 변동성 구조적 원인\n       Note: 은행 비탄력성이 aggregate reserve 충분해도 SOFR 변동성 유발", "supporting_evidence": [{"name": "Wolf Street", "date": "2026-01-05", "claim": "ON RRP dropped to ~$6B, effectively exhausted", "credibility_type": "media"}, {"name": "Federal Reserve H.4.1", "date": "2026-02-12", "claim": "Reserve balances $2,901B, down $310B YoY", "credibility_type": "primary_data"}, {"name": "NY Fed SOFR data", "date": "2026-02-17", "claim": "SOFR-IORB spread +6.6bp 양전환 (비계절적), RRP 버퍼 고갈 후 QT 직접 전달 증거", "credibility_type": "primary_data"}, {"name": "Dallas Federal Reserve", "date": "2026-02-12", "claim": "Banks are inelastic repo providers. 64% of cleared repo by 8:30 AM. Structural SOFR volatility independent of aggregate reserves.", "credibility_type": "central_bank"}, {"name": "The Daily Economy", "date": "2026-02-15", "claim": "SOFR-IORB spread drifting steadily higher over two years. Structural regime shift.", "credibility_type": "media"}], "contradicting_evidence": [{"name": "NY Fed", "date": "2026-02-12", "claim": "RMP explicitly designed to offset QT impact on reserves", "credibility_type": "central_bank"}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "claim": "QT 공식 종료. 구조적 reserve drain 소멸. RMP $40B/월 reserve-additive.", "credibility_type": "central_bank"}, {"name": "FOMC Minutes Jan 2026", "date": "2026-01-28", "claim": "Year-end pressures subdued. Reserves near $3T. EFFR stable just below IORB.", "credibility_type": "central_bank"}]}, {"id": "HYP_APRIL_SQUEEZE", "title": "2026년 4월 세수 시즌 reserve squeeze 시나리오", "status": "active", "confidence": 0.471, "created": "2026-02-19", "content": "QT 종료(2025-12) 후 base case:\nReserves $2.9T(H.4.1) - TGA $320B(DTS 중앙값) + RMP ~$40B(NY Fed) = $2.62T(파생)\n→ Cleveland Fed threshold $2.7T 하회 가능\n→ SOFR-IORB 양전환 가능성\nBUT Fed가 RMP pace 올릴 수 있음 (4월 한정, 구체 규모 미공개)\n→ 완전 scarcity 아닌 \"managed stress\" 가능성 높음.\n", "test_criteria": "- 4월 세수 시즌 중 reserves $2.7T 이하 도달 여부\n- SOFR-IORB 양전환 지속 (3일+ 연속)\n- SRF 사용 증가 여부\n- RMP 4월 elevated pace 실제 규모\n", "test_window": "2026-04", "monitor_indicators": ["SOFR-IORB spread (daily)", "Daily Treasury Statement (TGA)", "Fed RMP purchase volume", "Bank reserves (weekly H.4.1)", "SRF usage"], "user_comments": [], "breakdown": {"supporting": [{"name": "Cleveland Fed", "date": "2025-11-15", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.688, "user_override": 1.0, "score": 0.585}, {"name": "US Treasury DTS", "date": "2026-02-15", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.981, "user_override": 1.0, "score": 0.981}, {"name": "NY Fed SOFR data + NY Fed SOMA", "date": "2026-02-17", "credibility_type": "primary_data", "source_weight": 1.0, "freshness": 0.989, "user_override": 1.0, "score": 0.989}], "contradicting": [{"name": "NY Fed", "date": "2026-02-12", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.97, "user_override": 1.0, "score": 0.824}, {"name": "NY Fed Operating Policy", "date": "2025-12-10", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.758, "user_override": 1.0, "score": 0.644}, {"name": "FOMC Minutes Jan 2026", "date": "2026-01-28", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.915, "user_override": 1.0, "score": 0.778}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "credibility_type": "central_bank", "source_weight": 0.85, "freshness": 0.732, "user_override": 1.0, "score": 0.622}], "support_score": 2.555, "contra_score": 2.868, "confidence": 0.471, "as_of": "2026-02-20"}, "graph_chain": "<- [supports] (empirical) SOFR-IORB 스프레드 양전환 관측 (+6.6bp, 2026-02-17)\n       Note: 4월 전 2월에 이미 SOFR>IORB = 버퍼 부족 사전 시그널\n    <- [supports] (empirical) RMP 1월 실적 $23B (목표 $40B 미달)\n       Note: RMP 1월 $23B(목표 58%) → reserve 보충 지연\n    <- [supports] (?) SOFR-IORB 스프레드 구조적 양전환 (2025-2026)\n       Note: 이미 2월에 SOFR 양전환 — 4월 세수 전에도 스트레스", "supporting_evidence": [{"name": "Cleveland Fed", "date": "2025-11-15", "claim": "Scarcity threshold ~$2.5-2.7T", "credibility_type": "central_bank"}, {"name": "US Treasury DTS", "date": "2026-02-15", "claim": "Historical April TGA swing $300-330B", "credibility_type": "primary_data"}, {"name": "NY Fed SOFR data + NY Fed SOMA", "date": "2026-02-17", "claim": "SOFR-IORB +6.6bp 양전환(2월 비계절적) + RMP 1월 $23B 실적(목표 $40B 미달 58%) = 4월 전에 이미 스트레스 시그널", "credibility_type": "primary_data"}], "contradicting_evidence": [{"name": "NY Fed", "date": "2026-02-12", "claim": "RMP explicitly designed to prevent scarcity, pace can be elevated", "credibility_type": "central_bank"}, {"name": "NY Fed Operating Policy", "date": "2025-12-10", "claim": "RMP elevated pace through mid-April, then significantly reduced. TGA peak ~$1,025B expected.", "credibility_type": "central_bank"}, {"name": "FOMC Minutes Jan 2026", "date": "2026-01-28", "claim": "Year-end pressures subdued. Reserves near $3T projected.", "credibility_type": "central_bank"}, {"name": "Federal Reserve FOMC", "date": "2025-12-01", "claim": "QT 공식 종료. 구조적 reserve drain 소멸. 계절적 squeeze만 잔존.", "credibility_type": "central_bank"}]}], "cycle_status": "  No active cycle. Last completed: #007", "review_queue": []};
+
+const STATUS_DESC = {
+  quarantine: "Evidence present but not yet verified. Promoted to active with 3+ independent sources + user approval.",
+  active: "Verified. Usable for decisions. Referenced by other beliefs.",
+  invalidated: "Refuted by counter-evidence. Remains in graph as inactive.",
+  archived: "Expired by time. Preserved as history only.",
+};
+
+const STATUS_EMOJI = { active: "\u{1f7e2}", quarantine: "\u{1f7e1}", invalidated: "\u{1f534}", archived: "\u26aa" };
+
+function confColor(c) {
+  if (c > 0.65) return "var(--green)";
+  if (c > 0.4) return "var(--yellow)";
+  return "var(--red)";
+}
+
+// ─── Sidebar ───
+document.getElementById("sidebar-stats").textContent =
+  `v0.2 | Nodes: ${DATA.stats.total_nodes} | Edges: ${DATA.stats.total_edges}`;
+document.getElementById("cycle-status").textContent = DATA.cycle_status || "N/A";
+document.getElementById("generated-date").textContent = `Snapshot: ${DATA.generated}`;
+document.getElementById("footer-date").textContent = DATA.generated;
+
+// Review queue
+if (DATA.review_queue && DATA.review_queue.length > 0) {
+  let html = '<hr><h3>Review Queue (' + DATA.review_queue.length + ')</h3>';
+  DATA.review_queue.forEach(r => {
+    const mat = (r.materiality * 100).toFixed(0) + '%';
+    html += `<div class="review-item"><span class="mat">[${mat}]</span> ${r.belief_id}<br><span style="color:var(--text-dim)">${r.reason}</span></div>`;
+  });
+  document.getElementById("review-queue-section").innerHTML = html;
+}
+
+// ─── Themes ───
+function renderThemes() {
+  if (!DATA.themes || DATA.themes.length === 0) return;
+  let html = '<h2>Themes (' + DATA.themes.length + ')</h2>';
+  DATA.themes.forEach(thm => {
+    const core = thm.beliefs.filter(b => !b.is_sub);
+    const sub = thm.beliefs.filter(b => b.is_sub);
+    const window = thm.convergence_window ? ` | ${thm.convergence_window}` : '';
+
+    html += `<div class="theme-card">`;
+    html += `<h3>${thm.title} &mdash; Beliefs: ${thm.beliefs.length}${window}</h3>`;
+    if (thm.content) html += `<div class="thesis">${esc(thm.content)}</div>`;
+
+    if (core.length) {
+      html += `<div style="margin-top:6px;color:var(--text-dim);font-size:0.85em;">Core:</div><div class="theme-beliefs">`;
+      core.forEach(b => {
+        html += `<span class="theme-belief-tag tag-${b.status}" onclick="scrollToBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
+      });
+      html += `</div>`;
+    }
+    if (sub.length) {
+      html += `<div style="margin-top:6px;color:var(--text-dim);font-size:0.85em;">Sub-Beliefs:</div><div class="theme-beliefs">`;
+      sub.forEach(b => {
+        html += `<span class="theme-belief-tag tag-${b.status}" onclick="scrollToBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
+      });
+      html += `</div>`;
+    }
+
+    let meta = [];
+    if (thm.convergence_window) meta.push(`Convergence: <b>${thm.convergence_window}</b>`);
+    if (thm.risk_type) meta.push(`Risk: <b>${thm.risk_type}</b>`);
+    if (meta.length) html += `<div class="theme-meta">${meta.join(' | ')}</div>`;
+    html += `</div>`;
+  });
+  document.getElementById("themes-section").innerHTML = html;
+}
+
+// ─── Beliefs ───
+let activeFilters = new Set(["active", "quarantine"]);
+
+function toggleFilter(btn) {
+  const s = btn.dataset.status;
+  if (activeFilters.has(s)) { activeFilters.delete(s); btn.classList.remove("active"); }
+  else { activeFilters.add(s); btn.classList.add("active"); }
+  renderBeliefs();
+}
+
+function renderBeliefs() {
+  let filtered = DATA.beliefs.filter(b => activeFilters.has(b.status));
+
+  const sort = document.getElementById("sort-select").value;
+  if (sort === "conf-high") filtered.sort((a, b) => b.confidence - a.confidence);
+  else if (sort === "conf-low") filtered.sort((a, b) => a.confidence - b.confidence);
+  else if (sort === "date-new") filtered.sort((a, b) => (b.created || "").localeCompare(a.created || ""));
+
+  let html = '';
+  filtered.forEach(b => {
+    const color = confColor(b.confidence);
+    const barW = Math.max(2, Math.round(b.confidence * 100));
+    const supCount = b.breakdown.supporting.length;
+    const conCount = b.breakdown.contradicting.length;
+
+    html += `<div class="belief-card" id="belief-${b.id}">`;
+
+    // Header
+    html += `<div class="belief-header">`;
+    html += `<div class="belief-title">${STATUS_EMOJI[b.status]||''} ${esc(b.title)}</div>`;
+    html += `<div class="belief-meta"><div class="belief-conf" style="color:${color}">${b.confidence.toFixed(2)}</div>`;
+    html += `<span class="status-badge status-${b.status}">${b.status}</span>`;
+    html += `<div style="color:var(--text-dim);font-size:0.8em">${b.created||'?'}</div></div>`;
+    html += `</div>`;
+
+    // Status desc
+    html += `<div class="status-desc">${STATUS_DESC[b.status]||''}</div>`;
+
+    // Confidence bar
+    html += `<div class="conf-bar-bg"><div class="conf-bar-fill" style="width:${barW}%;background:${color}"></div></div>`;
+
+    // Thesis
+    if (b.content) html += `<div class="thesis">${esc(b.content)}</div>`;
+
+    // Supporting evidence
+    html += collapsible(`Supporting (${supCount})`, () => {
+      if (!supCount) return '<div style="color:var(--text-dim)">No supporting evidence.</div>';
+      let h = '';
+      b.breakdown.supporting.forEach((item, i) => {
+        const override = item.user_override !== 1.0 ? ` (user: x${item.user_override.toFixed(1)})` : '';
+        h += `<div class="evidence-item evidence-sup">`;
+        h += `<strong>[${item.credibility_type}]</strong> ${esc(item.name)} (${item.date})`;
+        h += `<div class="ev-score">Score: ${item.score.toFixed(3)} (w=${item.source_weight.toFixed(2)} x fresh=${item.freshness.toFixed(2)}${override})</div>`;
+        // Find claim
+        const ev = b.supporting_evidence[i];
+        if (ev && ev.claim) h += `<div class="ev-claim">"${esc(ev.claim)}"</div>`;
+        h += `</div>`;
+      });
+      return h;
+    });
+
+    // Contradicting evidence
+    html += collapsible(`Contradicting (${conCount})`, () => {
+      if (!conCount) return '<div style="color:var(--text-dim)">No contradicting evidence.</div>';
+      let h = '';
+      b.breakdown.contradicting.forEach((item, i) => {
+        const override = item.user_override !== 1.0 ? ` (user: x${item.user_override.toFixed(1)})` : '';
+        h += `<div class="evidence-item evidence-con">`;
+        h += `<strong>[${item.credibility_type}]</strong> ${esc(item.name)} (${item.date})`;
+        h += `<div class="ev-score">Score: ${item.score.toFixed(3)} (w=${item.source_weight.toFixed(2)} x fresh=${item.freshness.toFixed(2)}${override})</div>`;
+        const ev = b.contradicting_evidence[i];
+        if (ev && ev.claim) h += `<div class="ev-claim">"${esc(ev.claim)}"</div>`;
+        h += `</div>`;
+      });
+      return h;
+    });
+
+    // Graph chain
+    html += collapsible('Graph Chain', () => {
+      if (!b.graph_chain) return '<div style="color:var(--text-dim)">No graph evidence chain.</div>';
+      return `<div class="chain-code">${esc(b.graph_chain)}</div>`;
+    });
+
+    // Test criteria
+    html += collapsible('Test Criteria', () => {
+      let h = '';
+      if (b.test_criteria) h += `<div style="white-space:pre-wrap">${esc(b.test_criteria)}</div>`;
+      else h += '<div style="color:var(--text-dim)">No test criteria defined.</div>';
+      if (b.test_window) h += `<div style="margin-top:6px;color:var(--text-dim)">Window: ${esc(b.test_window)}</div>`;
+      if (b.monitor_indicators && b.monitor_indicators.length) {
+        h += '<div style="margin-top:6px"><b>Monitor Indicators:</b></div>';
+        b.monitor_indicators.forEach(m => { h += `<div>- ${esc(m)}</div>`; });
+      }
+      return h;
+    });
+
+    // Comments
+    if (b.user_comments && b.user_comments.length) {
+      html += collapsible(`Comments (${b.user_comments.length})`, () => {
+        let h = '';
+        b.user_comments.forEach(c => {
+          h += `<div class="comment-item"><span class="comment-meta">[${c.date||'?'}] (${c.action||'?'})</span> ${esc(c.comment||'')}</div>`;
+        });
+        return h;
+      });
+    }
+
+    html += `</div>`; // belief-card
+  });
+
+  if (!filtered.length) html = '<div style="color:var(--text-dim);padding:20px;">No beliefs match current filters.</div>';
+  document.getElementById("beliefs-section").innerHTML = html;
+}
+
+// ─── Utilities ───
+let _collapseId = 0;
+function collapsible(title, contentFn) {
+  const id = 'col-' + (++_collapseId);
+  return `<div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapsible('${id}', this)">
+      <span>${title}</span><span class="arrow">&#x25B6;</span>
+    </div>
+    <div class="collapsible-body" id="${id}" data-render="${contentFn.toString().replace(/"/g, '&quot;')}">${''}</div>
+  </div>`;
+}
+
+function toggleCollapsible(id, header) {
+  const body = document.getElementById(id);
+  const isOpen = body.classList.contains('open');
+  if (!isOpen && !body.dataset.rendered) {
+    // Lazy render
+    const fn = new Function('return (' + body.dataset.render.replace(/&quot;/g, '"') + ')()');
+    body.innerHTML = fn();
+    body.dataset.rendered = '1';
+  }
+  body.classList.toggle('open');
+  header.classList.toggle('open');
+}
+
+function scrollToBelief(id) {
+  const el = document.getElementById('belief-' + id);
+  if (el) {
+    // Make sure the belief is visible (activate its status filter if needed)
+    const belief = DATA.beliefs.find(b => b.id === id);
+    if (belief && !activeFilters.has(belief.status)) {
+      activeFilters.add(belief.status);
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        if (btn.dataset.status === belief.status) btn.classList.add('active');
+      });
+      renderBeliefs();
+    }
+    setTimeout(() => {
+      const target = document.getElementById('belief-' + id);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.style.borderColor = 'var(--blue)';
+        setTimeout(() => { target.style.borderColor = ''; }, 2000);
+      }
+    }, 100);
+  }
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Init ───
+renderThemes();
+renderBeliefs();
+</script>
+</body>
+</html>
