@@ -437,66 +437,61 @@ function renderBeliefs() {
     if (b.content) html += `<div class="thesis">${esc(b.content)}</div>`;
 
     // Supporting evidence
-    html += collapsible(`Supporting (${supCount})`, () => {
-      if (!supCount) return '<div style="color:var(--text-dim)">No supporting evidence.</div>';
-      let h = '';
+    let supHtml = '';
+    if (!supCount) { supHtml = '<div style="color:var(--text-dim)">No supporting evidence.</div>'; }
+    else {
       b.breakdown.supporting.forEach((item, i) => {
         const override = item.user_override !== 1.0 ? ` (user: x${item.user_override.toFixed(1)})` : '';
-        h += `<div class="evidence-item evidence-sup">`;
-        h += `<strong>[${item.credibility_type}]</strong> ${esc(item.name)} (${item.date})`;
-        h += `<div class="ev-score">Score: ${item.score.toFixed(3)} (w=${item.source_weight.toFixed(2)} x fresh=${item.freshness.toFixed(2)}${override})</div>`;
-        // Find claim
+        supHtml += `<div class="evidence-item evidence-sup">`;
+        supHtml += `<strong>[${item.credibility_type}]</strong> ${esc(item.name)} (${item.date})`;
+        supHtml += `<div class="ev-score">Score: ${item.score.toFixed(3)} (w=${item.source_weight.toFixed(2)} x fresh=${item.freshness.toFixed(2)}${override})</div>`;
         const ev = b.supporting_evidence[i];
-        if (ev && ev.claim) h += `<div class="ev-claim">"${esc(ev.claim)}"</div>`;
-        h += `</div>`;
+        if (ev && ev.claim) supHtml += `<div class="ev-claim">"${esc(ev.claim)}"</div>`;
+        supHtml += `</div>`;
       });
-      return h;
-    });
+    }
+    html += collapsible(`Supporting (${supCount})`, supHtml);
 
     // Contradicting evidence
-    html += collapsible(`Contradicting (${conCount})`, () => {
-      if (!conCount) return '<div style="color:var(--text-dim)">No contradicting evidence.</div>';
-      let h = '';
+    let conHtml = '';
+    if (!conCount) { conHtml = '<div style="color:var(--text-dim)">No contradicting evidence.</div>'; }
+    else {
       b.breakdown.contradicting.forEach((item, i) => {
         const override = item.user_override !== 1.0 ? ` (user: x${item.user_override.toFixed(1)})` : '';
-        h += `<div class="evidence-item evidence-con">`;
-        h += `<strong>[${item.credibility_type}]</strong> ${esc(item.name)} (${item.date})`;
-        h += `<div class="ev-score">Score: ${item.score.toFixed(3)} (w=${item.source_weight.toFixed(2)} x fresh=${item.freshness.toFixed(2)}${override})</div>`;
+        conHtml += `<div class="evidence-item evidence-con">`;
+        conHtml += `<strong>[${item.credibility_type}]</strong> ${esc(item.name)} (${item.date})`;
+        conHtml += `<div class="ev-score">Score: ${item.score.toFixed(3)} (w=${item.source_weight.toFixed(2)} x fresh=${item.freshness.toFixed(2)}${override})</div>`;
         const ev = b.contradicting_evidence[i];
-        if (ev && ev.claim) h += `<div class="ev-claim">"${esc(ev.claim)}"</div>`;
-        h += `</div>`;
+        if (ev && ev.claim) conHtml += `<div class="ev-claim">"${esc(ev.claim)}"</div>`;
+        conHtml += `</div>`;
       });
-      return h;
-    });
+    }
+    html += collapsible(`Contradicting (${conCount})`, conHtml);
 
     // Graph chain
-    html += collapsible('Graph Chain', () => {
-      if (!b.graph_chain) return '<div style="color:var(--text-dim)">No graph evidence chain.</div>';
-      return `<div class="chain-code">${esc(b.graph_chain)}</div>`;
-    });
+    let chainHtml = '';
+    if (!b.graph_chain) chainHtml = '<div style="color:var(--text-dim)">No graph evidence chain.</div>';
+    else chainHtml = `<div class="chain-code">${esc(b.graph_chain)}</div>`;
+    html += collapsible('Graph Chain', chainHtml);
 
     // Test criteria
-    html += collapsible('Test Criteria', () => {
-      let h = '';
-      if (b.test_criteria) h += `<div style="white-space:pre-wrap">${esc(b.test_criteria)}</div>`;
-      else h += '<div style="color:var(--text-dim)">No test criteria defined.</div>';
-      if (b.test_window) h += `<div style="margin-top:6px;color:var(--text-dim)">Window: ${esc(b.test_window)}</div>`;
-      if (b.monitor_indicators && b.monitor_indicators.length) {
-        h += '<div style="margin-top:6px"><b>Monitor Indicators:</b></div>';
-        b.monitor_indicators.forEach(m => { h += `<div>- ${esc(m)}</div>`; });
-      }
-      return h;
-    });
+    let testHtml = '';
+    if (b.test_criteria) testHtml += `<div style="white-space:pre-wrap">${esc(b.test_criteria)}</div>`;
+    else testHtml += '<div style="color:var(--text-dim)">No test criteria defined.</div>';
+    if (b.test_window) testHtml += `<div style="margin-top:6px;color:var(--text-dim)">Window: ${esc(b.test_window)}</div>`;
+    if (b.monitor_indicators && b.monitor_indicators.length) {
+      testHtml += '<div style="margin-top:6px"><b>Monitor Indicators:</b></div>';
+      b.monitor_indicators.forEach(m => { testHtml += `<div>- ${esc(m)}</div>`; });
+    }
+    html += collapsible('Test Criteria', testHtml);
 
     // Comments
     if (b.user_comments && b.user_comments.length) {
-      html += collapsible(`Comments (${b.user_comments.length})`, () => {
-        let h = '';
-        b.user_comments.forEach(c => {
-          h += `<div class="comment-item"><span class="comment-meta">[${c.date||'?'}] (${c.action||'?'})</span> ${esc(c.comment||'')}</div>`;
-        });
-        return h;
+      let comHtml = '';
+      b.user_comments.forEach(c => {
+        comHtml += `<div class="comment-item"><span class="comment-meta">[${c.date||'?'}] (${c.action||'?'})</span> ${esc(c.comment||'')}</div>`;
       });
+      html += collapsible(`Comments (${b.user_comments.length})`, comHtml);
     }
 
     html += `</div>`; // belief-card
@@ -508,25 +503,18 @@ function renderBeliefs() {
 
 // ─── Utilities ───
 let _collapseId = 0;
-function collapsible(title, contentFn) {
+function collapsible(title, contentHtml) {
   const id = 'col-' + (++_collapseId);
   return `<div class="collapsible">
     <div class="collapsible-header" onclick="toggleCollapsible('${id}', this)">
       <span>${title}</span><span class="arrow">&#x25B6;</span>
     </div>
-    <div class="collapsible-body" id="${id}" data-render="${contentFn.toString().replace(/"/g, '&quot;')}">${''}</div>
+    <div class="collapsible-body" id="${id}">${contentHtml}</div>
   </div>`;
 }
 
 function toggleCollapsible(id, header) {
   const body = document.getElementById(id);
-  const isOpen = body.classList.contains('open');
-  if (!isOpen && !body.dataset.rendered) {
-    // Lazy render
-    const fn = new Function('return (' + body.dataset.render.replace(/&quot;/g, '"') + ')()');
-    body.innerHTML = fn();
-    body.dataset.rendered = '1';
-  }
   body.classList.toggle('open');
   header.classList.toggle('open');
 }
