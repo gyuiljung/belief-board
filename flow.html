@@ -1,0 +1,4213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Global Flow Monitor v2.1</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-muted: #475569;
+    --red: #ef4444;
+    --red-bg: #450a0a;
+    --green: #22c55e;
+    --green-bg: #052e16;
+    --yellow: #eab308;
+    --yellow-bg: #422006;
+    --blue: #3b82f6;
+    --blue-bg: #172554;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.5px; }
+  .header .meta { color: var(--text-dim); font-size: 11px; text-align: right; }
+  .header .meta div { margin-top: 2px; }
+
+  /* ── Flow Scoreboard ── */
+  .flow-scoreboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .flow-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    overflow: hidden;
+  }
+  .flow-panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .flow-panel-title.inflow { color: #4ade80; }
+  .flow-panel-title.outflow { color: #f87171; }
+  .flow-panel-title .count {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-dim);
+  }
+
+  .flow-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 110px;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    margin-bottom: 0;
+    transition: transform 0.1s;
+    cursor: pointer;
+    user-select: none;
+  }
+  .flow-row:hover {
+    transform: translateX(2px);
+    filter: brightness(1.15);
+  }
+  .flow-row .expand-icon {
+    font-size: 8px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    margin-right: 2px;
+  }
+  .flow-row .expand-icon.open { transform: rotate(90deg); }
+
+  /* ── Ticker Detail (inline expand) ── */
+  .ticker-expand {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    margin-bottom: 3px;
+  }
+  .ticker-expand.open { max-height: 600px; }
+  .ticker-expand-inner {
+    padding: 4px 8px 8px 20px;
+    background: rgba(0,0,0,0.25);
+    border-radius: 0 0 4px 4px;
+    border-left: 2px solid var(--blue);
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+  .ticker-expand-inner table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .ticker-expand-inner th {
+    text-align: left; padding: 2px 4px; color: var(--text-muted);
+    font-size: 8px; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 500;
+  }
+  .ticker-expand-inner th.r { text-align: right; }
+  .ticker-expand-inner td { padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .ticker-expand-inner td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .ticker-expand-inner td.tk { font-weight: 700; font-size: 11px; }
+  .ticker-expand-inner td.nm { color: var(--text-dim); font-size: 9px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flow-row .grp-label {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .flow-row .grp-label .icon { margin-right: 4px; }
+  .flow-row .pct-block {
+    text-align: right;
+  }
+  .flow-row .pct-main {
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+  .flow-row .est-flow {
+    font-size: 10px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    opacity: 0.7;
+  }
+  .flow-row .est-flow.big {
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 1;
+  }
+  .flow-row .bar-wrap {
+    height: 18px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .flow-row .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  /* ── Top Movers Strip ── */
+  .top-movers {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+  }
+  .top-movers-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-dim);
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+  }
+  .mover-card {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 6px;
+    min-width: 70px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .mover-card .ticker {
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .mover-card .pct {
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .mover-card .name {
+    font-size: 8px;
+    color: rgba(255,255,255,0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80px;
+  }
+  .mover-spacer {
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* ── KPI Row ── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .kpi-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .kpi-value {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .kpi-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+  .kpi-bar {
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 2px;
+    margin-top: 6px;
+    overflow: hidden;
+  }
+  .kpi-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s ease;
+  }
+
+  /* ── Signals ── */
+  .signals-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .signals-bar .title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .signal-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+  }
+  .signal-high { background: var(--red-bg); border-left: 3px solid var(--red); }
+  .signal-med  { background: var(--yellow-bg); border-left: 3px solid var(--yellow); }
+  .signal-low  { background: var(--green-bg); border-left: 3px solid var(--green); }
+  .signal-icon { font-size: 18px; flex-shrink: 0; }
+  .signal-text { font-size: 12px; line-height: 1.5; }
+  .signal-text strong { display: block; margin-bottom: 2px; }
+  .signal-text .detail { color: var(--text-dim); font-size: 10px; }
+
+  /* ── Category Detail (collapsible) ── */
+  .cat-detail-wrapper {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .cat-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .cat-detail-header:hover { background: var(--surface2); }
+  .cat-detail-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+  }
+  .cat-detail-toggle {
+    font-size: 11px;
+    color: var(--blue);
+  }
+  .cat-detail-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 14px 10px;
+  }
+  .cat-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .cat-detail-body {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    max-height: 0;
+  }
+  .cat-detail-body.open { max-height: 3000px; }
+  .cat-detail-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 0 14px 14px;
+  }
+
+  .cat-card-inner { overflow: hidden; }
+  .cat-card-inner .cat-label {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  /* ── Group sections inside detail ── */
+  .group-section { margin-bottom: 4px; }
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: var(--surface2);
+    border-left: 3px solid var(--blue);
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+    user-select: none;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+  }
+  .group-header:hover { background: #1f2b42; }
+  .group-header .toggle-icon {
+    font-size: 8px;
+    transition: transform 0.2s;
+    width: 10px;
+  }
+  .group-header .toggle-icon.open { transform: rotate(90deg); }
+  .group-header .grp-avg {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+  }
+  .group-body { overflow: hidden; transition: max-height 0.25s ease; }
+
+  /* ── Ticker table ── */
+  .ticker-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .ticker-table th {
+    text-align: left;
+    padding: 4px;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .ticker-table th.num { text-align: right; }
+  .ticker-table td {
+    padding: 3px 4px;
+    border-bottom: 1px solid #0f172a;
+    font-variant-numeric: tabular-nums;
+  }
+  .ticker-table td.num { text-align: right; }
+  .ticker-table td.ticker-name {
+    color: var(--text-dim);
+    font-size: 10px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Heatmap text colors ── */
+  .pos { color: #4ade80; }
+  .neg { color: #f87171; }
+  .neu { color: var(--text-dim); }
+
+  .tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 600;
+  }
+  .tag-red    { background: var(--red-bg); color: var(--red); }
+  .tag-green  { background: var(--green-bg); color: var(--green); }
+  .tag-yellow { background: var(--yellow-bg); color: var(--yellow); }
+
+  /* ── TE Flow rows ── */
+  .te-flow-row {
+    display: grid;
+    grid-template-columns: 220px 60px 40px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    font-size: 11px;
+  }
+  .te-flow-row:hover { background: var(--surface2); }
+  .te-flow-row .te-dir { font-weight: 600; }
+  .te-flow-row .te-z { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .te-flow-row .te-lag { color: var(--text-dim); font-size: 10px; text-align: center; }
+  .te-flow-row .te-bar { height: 14px; border-radius: 3px; overflow: hidden; background: rgba(255,255,255,0.03); }
+  .te-flow-row .te-bar-fill { height: 100%; border-radius: 3px; }
+
+  /* ── Bottom sections ── */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .card-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .checklist { list-style: none; font-size: 12px; }
+  .checklist li {
+    padding: 6px 0;
+    border-bottom: 1px solid #0f172a;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .checklist .time { color: var(--blue); font-size: 10px; min-width: 48px; }
+
+  .link-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .link-item {
+    display: block;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border-radius: 6px;
+    color: var(--blue);
+    text-decoration: none;
+    font-size: 11px;
+    transition: background 0.2s;
+  }
+  .link-item:hover { background: #243147; }
+  .link-item .link-label {
+    display: block;
+    color: var(--text-dim);
+    font-size: 9px;
+    margin-top: 2px;
+  }
+
+  .full-width { grid-column: 1 / -1; }
+
+  .note {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    line-height: 1.6;
+  }
+
+  /* ── Period Selector ── */
+  .period-selector {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .period-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .period-btn:hover { border-color: var(--blue); color: var(--text); }
+  .period-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+  /* ── TE 4-grid ── */
+  .te-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .te-panel {
+    background: rgba(0,0,0,0.15);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+  }
+  .te-panel-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .te-panel .te-flow-row { grid-template-columns: 180px 55px 35px 1fr; font-size: 10px; padding: 3px 4px; }
+  .te-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 6px 0 2px 0;
+    padding-bottom: 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  /* ── Buying Efficiency ── */
+  #buying-eff-card { margin-bottom: 16px; }
+
+  /* ── Response Matrix ── */
+  .matrix-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .matrix-table th {
+    text-align: left;
+    padding: 6px 4px;
+    color: var(--text-dim);
+    font-weight: 500;
+    font-size: 9px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .matrix-table td {
+    padding: 6px 4px;
+    border-bottom: 1px solid #0f172a;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .flow-scoreboard { grid-template-columns: 1fr; }
+    .flow-row { grid-template-columns: 120px 1fr 90px; }
+    .cat-detail-inner { grid-template-columns: 1fr; }
+    .bottom-grid, .link-grid { grid-template-columns: 1fr; }
+    .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    .top-movers { flex-wrap: wrap; }
+  }
+  @media (max-width: 480px) {
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    .flow-row { grid-template-columns: 100px 1fr 80px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <h1>📡 Global Flow Monitor <span style="font-size:11px;color:var(--text-dim)">v2.1</span></h1>
+  <div class="meta">
+    <div id="timestamp"></div>
+    <div id="data-date"></div>
+  </div>
+</div>
+
+<!-- PERIOD SELECTOR + FLOW SCOREBOARD -->
+<div class="period-selector" id="period-selector">
+  <button class="period-btn" data-period="d1" data-key="1D %">1D</button>
+  <button class="period-btn active" data-period="d5" data-key="1W %">1W</button>
+  <button class="period-btn" data-period="d30" data-key="1M %">1M</button>
+  <button class="period-btn" data-period="d90" data-key="3M %">3M</button>
+  <button class="period-btn" data-period="d180" data-key="6M %">6M</button>
+  <button class="period-btn" data-period="d365" data-key="1Y %">1Y</button>
+</div>
+<div class="flow-scoreboard">
+  <div class="flow-panel" id="inflow-panel">
+    <div class="flow-panel-title inflow">🔺 GAINERS (1W+) <span class="count" id="inflow-count"></span></div>
+    <div id="inflow-rows"></div>
+  </div>
+  <div class="flow-panel" id="outflow-panel">
+    <div class="flow-panel-title outflow">🔻 LOSERS (1W-) <span class="count" id="outflow-count"></span></div>
+    <div id="outflow-rows"></div>
+  </div>
+</div>
+
+<!-- TOP MOVERS STRIP -->
+<div class="top-movers" id="top-movers"></div>
+
+<!-- KPI CARDS -->
+<div class="kpi-row">
+  <div class="kpi-card">
+    <div class="kpi-label">Rotation Score</div>
+    <div class="kpi-value" id="kpi-rot">--</div>
+    <div class="kpi-sub" id="kpi-rot-sub">Defensive - Semi 5D</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill" id="kpi-rot-bar"></div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">EWY vs EEM (1W)</div>
+    <div class="kpi-value" id="kpi-em">--</div>
+    <div class="kpi-sub" id="kpi-em-sub">한국 vs EM 광역</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill" id="kpi-em-bar"></div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">VIX</div>
+    <div class="kpi-value" id="kpi-vix">--</div>
+    <div class="kpi-sub" id="kpi-vix-sub">시장 공포 지수</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill" id="kpi-vix-bar"></div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Credit Spread</div>
+    <div class="kpi-value" id="kpi-credit">--</div>
+    <div class="kpi-sub" id="kpi-credit-sub">HYG - LQD 1W</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill" id="kpi-credit-bar"></div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">US Exceptionalism</div>
+    <div class="kpi-value" id="kpi-usex">--</div>
+    <div class="kpi-sub" id="kpi-usex-sub">SPY - EFA 1W</div>
+    <div class="kpi-bar"><div class="kpi-bar-fill" id="kpi-usex-bar"></div></div>
+  </div>
+</div>
+
+<!-- COMPOSITE SIGNALS -->
+<div class="signals-bar">
+  <div class="title">🚨 복합 시그널 -- 외인 행동 예측</div>
+  <div id="signals"></div>
+</div>
+
+<!-- GROUP TE (Transfer Entropy) — 4-window grid -->
+<div class="card" id="group-te-card" hidden style="margin-bottom:16px">
+  <div class="card-title">🔗 그룹 간 정보 흐름 (Transfer Entropy)</div>
+  <div style="font-size:10px;color:var(--text-dim);margin-bottom:10px">A→B: A가 B에 선행. <span style="color:#60a5fa">Price</span>=가격 수익률 전이 <span style="color:#22d3ee">Flow</span>=거래대금(Close×Vol) 흐름 전이. Z>2.5 유의미.</div>
+  <div class="te-grid" id="group-te-grid"></div>
+</div>
+
+<!-- CATEGORY DETAIL (collapsed by default) -->
+<div id="cat-detail-section"></div>
+
+<!-- BUYING EFFICIENCY -->
+<div class="card" id="buying-eff-card" hidden>
+  <div class="card-title">개인 매수 효율 (Buying Efficiency)</div>
+  <div id="buying-eff-content" style="font-size:12px; line-height:1.8;"></div>
+</div>
+
+<!-- BOTTOM: Checklist, Links, Response Matrix -->
+<div class="bottom-grid">
+  <div class="card">
+    <div class="card-title">매일 아침 체크리스트</div>
+    <ul class="checklist">
+      <li><span class="time">08:00</span> 스크립트 실행 -> Flow Scoreboard 확인</li>
+      <li><span class="time">08:03</span> OUTFLOW 패널 -> 자금 이탈 방향</li>
+      <li><span class="time">08:05</span> VIX + Credit Spread -> 리스크 환경</li>
+      <li><span class="time">08:07</span> US Exceptionalism -> EM 압력 여부</li>
+      <li><span class="time">08:10</span> 복합 시그널 이상 시 뉴스 맥락 확인</li>
+      <li><span class="time">08:15</span> 한국 수급 대입 -> 시나리오 정리</li>
+      <li><span class="time">15:30</span> 장마감 후 매수 효율 기록</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-title">핵심 소스 바로가기</div>
+    <div class="link-grid">
+      <a class="link-item" href="https://www.morningstar.com/funds/etf-fund-flows" target="_blank">
+        Morningstar ETF Flows
+        <span class="link-label">월간 섹터/지역별</span>
+      </a>
+      <a class="link-item" href="https://www.etf.com/etfanalytics/etf-fund-flows-tool" target="_blank">
+        ETF.com Flow Tool
+        <span class="link-label">일간 개별 ETF</span>
+      </a>
+      <a class="link-item" href="https://www.ici.org/research/stats/combined_flows" target="_blank">
+        ICI Combined Flows
+        <span class="link-label">주간 뮤추얼+ETF</span>
+      </a>
+      <a class="link-item" href="https://www.cfr.org/global-conflict-tracker" target="_blank">
+        CFR Conflict Tracker
+        <span class="link-label">지정학 리스크</span>
+      </a>
+      <a class="link-item" href="https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html" target="_blank">
+        CME FedWatch
+        <span class="link-label">금리 인하 확률</span>
+      </a>
+      <a class="link-item" href="https://www.marketscreener.com" target="_blank">
+        MarketScreener
+        <span class="link-label">글로벌 펀드플로우</span>
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Response Matrix -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-title">이상 신호 대응 매트릭스</div>
+  <table class="matrix-table">
+    <thead>
+      <tr><th>복합 시그널</th><th>위험도</th><th>즉각 행동</th><th>이전 사례</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>로테이션 +5 & 달러 +1.5%</td>
+        <td><span class="tag tag-red">HIGH</span></td>
+        <td>한국 반도체 포지션 재검토</td>
+        <td style="color:var(--text-dim)">2026.1.20 관세 쇼크</td>
+      </tr>
+      <tr>
+        <td>HYG-LQD 스프레드 -1.5%</td>
+        <td><span class="tag tag-red">HIGH</span></td>
+        <td>현금 비중 확대, 위험자산 축소</td>
+        <td style="color:var(--text-dim)">크레딧 스트레스</td>
+      </tr>
+      <tr>
+        <td>금+유가 동시 +3%</td>
+        <td><span class="tag tag-red">HIGH</span></td>
+        <td>방어주 전환, TLT/UUP 교차 확인</td>
+        <td style="color:var(--text-dim)">2025.6 이란-이스라엘</td>
+      </tr>
+      <tr>
+        <td>VIX 30+ & 엔 +3%</td>
+        <td><span class="tag tag-red">HIGH</span></td>
+        <td>전면 디레버리지</td>
+        <td style="color:var(--text-dim)">2024.8 캐리 청산</td>
+      </tr>
+      <tr>
+        <td>SPY vs EFA +3%</td>
+        <td><span class="tag tag-yellow">MED</span></td>
+        <td>EM 비중 축소 검토</td>
+        <td style="color:var(--text-dim)">US Exceptionalism</td>
+      </tr>
+      <tr>
+        <td>EWY vs EEM -4%</td>
+        <td><span class="tag tag-yellow">MED</span></td>
+        <td>외인 선물 숏 규모 확인</td>
+        <td style="color:var(--text-dim)">2026.2.5 외인 5조 매도</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note" id="footer-note">
+  데이터 연동: <code>python global_flow_monitor.py</code> 실행 후 새로고침 (자동 export)<br>
+  데이터 소스: Yahoo Finance (15분 지연) + KRX (pykrx)<br>
+  v2.2 -- 그룹 클릭 → 하위 티커 펼치기 + 1D/1W/1M/3M/6M/1Y 시계열
+</div>
+
+<script>
+// =====================================================
+// Global Flow Monitor v2.1 -- Dashboard JS
+// =====================================================
+
+// ── Enhanced Heatmap Color ──
+function heatColor(value, maxAbs) {
+  maxAbs = maxAbs || 5;
+  if (value == null || isNaN(value)) return 'rgba(100,116,139,0.1)';
+  const i = Math.min(Math.abs(value) / maxAbs, 1);
+  if (Math.abs(value) < 0.15) return 'rgba(100,116,139,0.1)'; // neutral slate
+  if (value > 0) {
+    // green: hsl(152, 50+i*40, 14+i*22)
+    const sat = 50 + i * 40;
+    const light = 14 + i * 22;
+    return `hsl(152, ${sat}%, ${light}%)`;
+  } else {
+    // red: hsl(4, 50+i*40, 14+i*22)
+    const sat = 50 + i * 40;
+    const light = 14 + i * 22;
+    return `hsl(4, ${sat}%, ${light}%)`;
+  }
+}
+
+function barColor(value, maxAbs) {
+  maxAbs = maxAbs || 5;
+  const i = Math.min(Math.abs(value) / maxAbs, 1);
+  if (value > 0) {
+    return `hsla(152, ${60 + i*30}%, ${35 + i*25}%, ${0.4 + i*0.4})`;
+  } else {
+    return `hsla(4, ${60 + i*30}%, ${35 + i*25}%, ${0.4 + i*0.4})`;
+  }
+}
+
+function textColor(value, maxAbs) {
+  maxAbs = maxAbs || 5;
+  if (value == null || isNaN(value)) return 'var(--text-dim)';
+  if (Math.abs(value) < 0.15) return 'var(--text-dim)';
+  const i = Math.min(Math.abs(value) / maxAbs, 1);
+  if (Math.abs(value) > 3) return '#ffffff';
+  return value > 0 ? '#4ade80' : '#f87171';
+}
+
+function fmtPct(v) {
+  if (v == null || isNaN(v)) return '<span class="neu">--</span>';
+  const cls = v > 0.05 ? 'pos' : v < -0.05 ? 'neg' : 'neu';
+  return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(1)}%</span>`;
+}
+
+function fmtPctPlain(v) {
+  if (v == null || isNaN(v)) return '--';
+  return `${v > 0 ? '+' : ''}${v.toFixed(1)}`;
+}
+
+// ── Format dollar amount ──
+function fmtDollar(v) {
+  if (v == null || isNaN(v) || v === 0) return '--';
+  const abs = Math.abs(v);
+  const sign = v > 0 ? '+' : '-';
+  if (abs >= 1e9) return `${sign}$${(abs/1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `${sign}$${Math.round(abs/1e6)}M`;
+  if (abs >= 1e3) return `${sign}$${Math.round(abs/1e3)}K`;
+  return `${sign}$${Math.round(abs)}`;
+}
+
+// ── Collect all groups with 1W% for scoreboard ──
+function collectGroups(categories) {
+  const groups = [];
+  const EXCLUDE_GROUPS = ['Volatility']; // VIX shown separately in KPI
+
+  for (const [catKey, cat] of Object.entries(categories)) {
+    const summary = cat.summary || {};
+    const grpData = cat.groups || {};
+    for (const [grpName, vals] of Object.entries(summary)) {
+      if (EXCLUDE_GROUPS.includes(grpName)) continue;
+      groups.push({
+        name: grpName,
+        icon: cat.icon || '',
+        catLabel: cat.label || '',
+        d1: vals['1D %'] ?? 0,
+        d5: vals['1W %'] ?? 0,
+        d30: vals['1M %'] ?? 0,
+        d90: vals['3M %'] ?? null,
+        d180: vals['6M %'] ?? null,
+        d365: vals['1Y %'] ?? null,
+        tradingImpact: vals['trading_impact'] ?? 0,
+        avgDolVol: vals['avg_dol_vol'] ?? 0,
+        tickers: grpData[grpName] || [],
+      });
+    }
+  }
+  return groups;
+}
+
+// ── Format AUM ──
+function fmtAum(v) {
+  if (v == null || isNaN(v) || v === 0) return '';
+  const abs = Math.abs(v);
+  if (abs >= 1e9) return `$${(abs/1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `$${Math.round(abs/1e6)}M`;
+  if (abs >= 1e3) return `$${Math.round(abs/1e3)}K`;
+  return `$${Math.round(abs)}`;
+}
+
+// ── Build ticker detail table HTML ──
+function buildTickerTable(tickers) {
+  if (!tickers || tickers.length === 0) return '';
+  const cols = ['1D %','1W %','1M %','3M %','6M %','1Y %'];
+  const labels = ['1D','1W','1M','3M','6M','1Y'];
+  let html = '<table><thead><tr><th>Ticker</th><th>Name</th>';
+  labels.forEach(l => { html += `<th class="r">${l}</th>`; });
+  html += '<th class="r">DailyVol</th></tr></thead><tbody>';
+  tickers.forEach(t => {
+    html += `<tr>`;
+    html += `<td class="tk">${t.Ticker||''}</td>`;
+    html += `<td class="nm">${t.Name||''}</td>`;
+    cols.forEach(c => {
+      const v = t[c];
+      const cls = v > 0.05 ? 'pos' : v < -0.05 ? 'neg' : 'neu';
+      const bold = Math.abs(v||0) > 5 ? 'font-weight:700;' : '';
+      html += `<td class="r"><span class="${cls}" style="${bold}">${v != null ? (v > 0 ? '+' : '') + v.toFixed(1) + '%' : '--'}</span></td>`;
+    });
+    html += `<td class="r" style="color:var(--text-muted);font-size:9px">${fmtAum(t.AvgDolVol)}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+// ── Flow Scoreboard (period-switchable) ──
+let _cachedGroups = [];
+let _currentPeriod = 'd5';
+const PERIOD_MAP = {d1:'d1', d5:'d5', d30:'d30', d90:'d90', d180:'d180', d365:'d365'};
+const PERIOD_LABELS = {d1:'1D', d5:'1W', d30:'1M', d90:'3M', d180:'6M', d365:'1Y'};
+
+function renderFlowScoreboard(categories, period) {
+  period = period || _currentPeriod;
+  _currentPeriod = period;
+  const groups = _cachedGroups.length ? _cachedGroups : collectGroups(categories);
+  if (categories) _cachedGroups = groups;
+  if (groups.length === 0) return;
+
+  // Get value for current period
+  function getVal(g) {
+    return g[period] ?? 0;
+  }
+
+  const maxAbs = Math.max(...groups.map(g => Math.abs(getVal(g))), 0.5);
+  const pLabel = PERIOD_LABELS[period] || '1W';
+
+  const inflow = groups.filter(g => getVal(g) >= 0).sort((a, b) => getVal(b) - getVal(a));
+  const outflow = groups.filter(g => getVal(g) < 0).sort((a, b) => getVal(a) - getVal(b));
+
+  document.getElementById('inflow-count').textContent = `${inflow.length}`;
+  document.getElementById('outflow-count').textContent = `${outflow.length}`;
+
+  // Update panel titles
+  document.querySelector('#inflow-panel .flow-panel-title').innerHTML = `🔺 GAINERS (${pLabel}+) <span class="count">${inflow.length}</span>`;
+  document.querySelector('#outflow-panel .flow-panel-title').innerHTML = `🔻 LOSERS (${pLabel}-) <span class="count">${outflow.length}</span>`;
+
+  function renderRows(container, items, isPositive) {
+    const el = document.getElementById(container);
+    el.innerHTML = '';
+    items.forEach(g => {
+      const val = getVal(g);
+      const pctWidth = Math.min(Math.abs(val) / maxAbs * 100, 100);
+      const bg = heatColor(val, maxAbs);
+      const bc = barColor(val, maxAbs);
+      const tc = textColor(val, maxAbs);
+      const flowStr = fmtDollar(g.tradingImpact);
+      const flowBig = Math.abs(g.tradingImpact) >= 1e9 ? ' big' : '';
+      const flowColor = g.tradingImpact > 0 ? '#4ade80' : g.tradingImpact < 0 ? '#f87171' : 'var(--text-dim)';
+
+      const row = document.createElement('div');
+      row.className = 'flow-row';
+      row.style.background = bg;
+      row.title = `${g.catLabel} > ${g.name}\n1D:${fmtPctPlain(g.d1)}% 1W:${fmtPctPlain(g.d5)}% 1M:${fmtPctPlain(g.d30)}%` +
+        (g.d90!=null?` 3M:${fmtPctPlain(g.d90)}%`:'') + (g.d180!=null?` 6M:${fmtPctPlain(g.d180)}%`:'') + (g.d365!=null?` 1Y:${fmtPctPlain(g.d365)}%`:'');
+      row.innerHTML = `
+        <div class="grp-label"><span class="expand-icon">&#9654;</span><span class="icon">${g.icon}</span>${g.name}</div>
+        <div class="bar-wrap">
+          <div class="bar-fill" style="width:${pctWidth}%;background:${bc};${isPositive ? '' : 'margin-left:auto'}"></div>
+        </div>
+        <div class="pct-block">
+          <div class="pct-main" style="color:${tc}">${fmtPctPlain(val)}%</div>
+          <div class="est-flow${flowBig}" style="color:${flowColor}">${flowStr}</div>
+        </div>
+      `;
+
+      const detail = document.createElement('div');
+      detail.className = 'ticker-expand';
+      const inner = document.createElement('div');
+      inner.className = 'ticker-expand-inner';
+      inner.innerHTML = buildTickerTable(g.tickers);
+      detail.appendChild(inner);
+
+      row.addEventListener('click', () => {
+        const icon = row.querySelector('.expand-icon');
+        detail.classList.toggle('open');
+        icon.classList.toggle('open');
+      });
+
+      el.appendChild(row);
+      el.appendChild(detail);
+    });
+  }
+
+  renderRows('inflow-rows', inflow, true);
+  renderRows('outflow-rows', outflow, false);
+}
+
+// Period selector event
+document.getElementById('period-selector').addEventListener('click', (e) => {
+  const btn = e.target.closest('.period-btn');
+  if (!btn) return;
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderFlowScoreboard(null, btn.dataset.period);
+});
+
+// ── Top Movers Strip ──
+function renderTopMovers(topMovers) {
+  const el = document.getElementById('top-movers');
+  if (!topMovers) { el.style.display = 'none'; return; }
+
+  const gainers = topMovers.gainers || [];
+  const losers = topMovers.losers || [];
+  if (gainers.length === 0 && losers.length === 0) { el.style.display = 'none'; return; }
+
+  let html = '<div class="top-movers-label">TOP MOVERS</div>';
+
+  gainers.forEach(m => {
+    const bg = heatColor(m['1W %'], 8);
+    const tc = textColor(m['1W %'], 8);
+    html += `<div class="mover-card" style="background:${bg}">
+      <div class="ticker" style="color:${tc}">${m.Ticker}</div>
+      <div class="pct" style="color:#4ade80">${fmtPctPlain(m['1W %'])}%</div>
+      <div class="name">${m.Name || ''}</div>
+    </div>`;
+  });
+
+  if (gainers.length > 0 && losers.length > 0) {
+    html += '<div class="mover-spacer">|</div>';
+  }
+
+  losers.forEach(m => {
+    const bg = heatColor(m['1W %'], 8);
+    const tc = textColor(m['1W %'], 8);
+    html += `<div class="mover-card" style="background:${bg}">
+      <div class="ticker" style="color:${tc}">${m.Ticker}</div>
+      <div class="pct" style="color:#f87171">${fmtPctPlain(m['1W %'])}%</div>
+      <div class="name">${m.Name || ''}</div>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+// ── KPI Cards ──
+function renderKPI(kpi) {
+  const rs = kpi.rotation_score;
+  if (rs != null) {
+    const el = document.getElementById('kpi-rot');
+    el.textContent = `${rs > 0 ? '+' : ''}${rs.toFixed(1)}`;
+    el.style.color = rs > 3 ? 'var(--red)' : rs > 0 ? 'var(--yellow)' : 'var(--green)';
+    document.getElementById('kpi-rot-sub').textContent = rs > 3 ? 'G->V 로테이션 가속' : rs > 0 ? '약한 로테이션' : 'V->G 복귀';
+    const bar = document.getElementById('kpi-rot-bar');
+    bar.style.width = `${Math.min(Math.abs(rs)*10,100)}%`;
+    bar.style.background = rs > 3 ? 'var(--red)' : rs > 0 ? 'var(--yellow)' : 'var(--green)';
+  }
+
+  const em = kpi.em_relative_5d;
+  if (em != null) {
+    const el = document.getElementById('kpi-em');
+    el.textContent = `${em > 0 ? '+' : ''}${em.toFixed(1)}%`;
+    el.style.color = em < -2 ? 'var(--red)' : 'var(--green)';
+    document.getElementById('kpi-em-sub').textContent = em < -2 ? '한국 EM 대비 약세' : '한국 상대 강세';
+    const bar = document.getElementById('kpi-em-bar');
+    bar.style.width = `${Math.min(Math.abs(em)*8,100)}%`;
+    bar.style.background = em < -2 ? 'var(--red)' : 'var(--green)';
+  }
+
+  const vix = kpi.vix;
+  if (vix != null) {
+    const el = document.getElementById('kpi-vix');
+    el.textContent = vix.toFixed(0);
+    el.style.color = vix > 25 ? 'var(--red)' : vix > 20 ? 'var(--yellow)' : 'var(--green)';
+    document.getElementById('kpi-vix-sub').textContent = vix > 25 ? '공포 구간' : vix > 20 ? '경계 구간' : '안정';
+    const bar = document.getElementById('kpi-vix-bar');
+    bar.style.width = `${Math.min(vix*3,100)}%`;
+    bar.style.background = vix > 25 ? 'var(--red)' : vix > 20 ? 'var(--yellow)' : 'var(--green)';
+  }
+
+  const cs = kpi.hyg_lqd_spread_5d;
+  if (cs != null) {
+    const el = document.getElementById('kpi-credit');
+    el.textContent = `${cs > 0 ? '+' : ''}${cs.toFixed(1)}%`;
+    el.style.color = cs < -1.5 ? 'var(--red)' : cs < -0.5 ? 'var(--yellow)' : 'var(--green)';
+    document.getElementById('kpi-credit-sub').textContent = cs < -1.5 ? '크레딧 스트레스' : cs < -0.5 ? '스프레드 확대 중' : '안정';
+    const bar = document.getElementById('kpi-credit-bar');
+    bar.style.width = `${Math.min(Math.abs(cs)*20,100)}%`;
+    bar.style.background = cs < -1.5 ? 'var(--red)' : cs < -0.5 ? 'var(--yellow)' : 'var(--green)';
+  }
+
+  const usex = kpi.spy_vs_efa_5d;
+  if (usex != null) {
+    const el = document.getElementById('kpi-usex');
+    el.textContent = `${usex > 0 ? '+' : ''}${usex.toFixed(1)}%`;
+    el.style.color = usex > 3 ? 'var(--red)' : usex > 1 ? 'var(--yellow)' : 'var(--green)';
+    document.getElementById('kpi-usex-sub').textContent = usex > 3 ? '미국 독주 (EM 위험)' : usex > 1 ? '미국 약간 우위' : '글로벌 균형';
+    const bar = document.getElementById('kpi-usex-bar');
+    bar.style.width = `${Math.min(Math.abs(usex)*15,100)}%`;
+    bar.style.background = usex > 3 ? 'var(--red)' : usex > 1 ? 'var(--yellow)' : 'var(--green)';
+  }
+}
+
+// ── Signals ──
+function renderSignals(signals) {
+  const div = document.getElementById('signals');
+  div.innerHTML = '';
+  if (!signals || signals.length === 0) {
+    div.innerHTML = '<div class="signal-card signal-low"><div class="signal-icon">&#x1F7E2;</div><div class="signal-text"><strong>시그널 없음</strong></div></div>';
+    return;
+  }
+  signals.forEach(s => {
+    const lvl = (s.level||'').includes('HIGH') ? 'high' : (s.level||'').includes('MED') ? 'med' : 'low';
+    const icon = lvl === 'high' ? '🔴' : lvl === 'med' ? '🟡' : '🟢';
+    div.innerHTML += `
+      <div class="signal-card signal-${lvl}">
+        <div class="signal-icon">${icon}</div>
+        <div class="signal-text">
+          <strong>${s.signal||''}</strong>
+          <div class="detail">${s.implication||''}</div>
+          ${s.data ? `<div class="detail" style="margin-top:2px">${s.data}</div>` : ''}
+        </div>
+      </div>`;
+  });
+}
+
+// ── Category Detail (collapsible, merged bonds_fx into risk_macro) ──
+const CAT_DISPLAY_ORDER = ['us_sectors', 'regional', 'thematic', 'risk_macro', 'bonds_fx'];
+
+function renderCategoryDetail(categories) {
+  const section = document.getElementById('cat-detail-section');
+  section.innerHTML = '';
+
+  // Outer wrapper
+  const wrapper = document.createElement('div');
+  wrapper.className = 'cat-detail-wrapper';
+
+  // Header with toggle
+  const header = document.createElement('div');
+  header.className = 'cat-detail-header';
+  header.innerHTML = `
+    <div class="cat-detail-title">📊 카테고리 디테일</div>
+    <div class="cat-detail-toggle" id="cat-detail-toggle-text">▸ 펼치기</div>
+  `;
+  wrapper.appendChild(header);
+
+  // Badge summary (always visible)
+  const badges = document.createElement('div');
+  badges.className = 'cat-detail-badges';
+  CAT_DISPLAY_ORDER.forEach(catKey => {
+    const cat = categories[catKey];
+    if (!cat) return;
+    const summary = cat.summary || {};
+    for (const [grpName, vals] of Object.entries(summary)) {
+      const d5 = vals['1W %'] ?? 0;
+      const bg = heatColor(d5, 5);
+      const tc = textColor(d5, 5);
+      badges.innerHTML += `<span class="cat-badge" style="background:${bg};color:${tc}">${cat.icon || ''} ${grpName} ${fmtPctPlain(d5)}%</span>`;
+    }
+  });
+  wrapper.appendChild(badges);
+
+  // Collapsible body
+  const body = document.createElement('div');
+  body.className = 'cat-detail-body';
+  body.id = 'cat-detail-body';
+
+  const inner = document.createElement('div');
+  inner.className = 'cat-detail-inner';
+
+  CAT_DISPLAY_ORDER.forEach(catKey => {
+    const cat = categories[catKey];
+    if (!cat) return;
+
+    const card = document.createElement('div');
+    card.className = 'cat-card-inner';
+
+    card.innerHTML = `<div class="cat-label">${cat.icon || ''} ${cat.label}</div>`;
+
+    const groups = cat.groups || {};
+    const summary = cat.summary || {};
+
+    for (const [grpName, tickers] of Object.entries(groups)) {
+      if (!tickers || tickers.length === 0) continue;
+
+      const sec = document.createElement('div');
+      sec.className = 'group-section';
+
+      const grpAvg = summary[grpName];
+      const avgStr = grpAvg ? `1D:${fmtPctPlain(grpAvg['1D %'])} / 1W:${fmtPctPlain(grpAvg['1W %'])} / 1M:${fmtPctPlain(grpAvg['1M %'])}` + (grpAvg['3M %']!=null?` / 3M:${fmtPctPlain(grpAvg['3M %'])}`:'') : '';
+
+      const gh = document.createElement('div');
+      gh.className = 'group-header';
+      gh.innerHTML = `<span class="toggle-icon open">&#9654;</span> ${grpName} <span class="grp-avg">${avgStr}</span>`;
+
+      const gb = document.createElement('div');
+      gb.className = 'group-body';
+      gb.style.maxHeight = '500px';
+
+      let tableHtml = `<table class="ticker-table">
+        <thead><tr><th>Ticker</th><th class="ticker-name">Name</th><th class="num">1D</th><th class="num">1W</th><th class="num">1M</th><th class="num">3M</th><th class="num">6M</th><th class="num">1Y</th></tr></thead>
+        <tbody>`;
+
+      tickers.forEach(t => {
+        const d1w = t['1W %'];
+        const bgStyle = `background:${heatColor(d1w, 5)}`;
+        const pctCols = ['1D %','1W %','1M %','3M %','6M %','1Y %'];
+        tableHtml += `<tr style="${bgStyle}">
+          <td><strong>${t.Ticker||''}</strong></td>
+          <td class="ticker-name">${t.Name||''}</td>`;
+        pctCols.forEach(c => { tableHtml += `<td class="num">${fmtPct(t[c])}</td>`; });
+        tableHtml += `</tr>`;
+      });
+
+      tableHtml += '</tbody></table>';
+      gb.innerHTML = tableHtml;
+
+      gh.addEventListener('click', () => {
+        const icon = gh.querySelector('.toggle-icon');
+        if (gb.style.maxHeight === '0px') {
+          gb.style.maxHeight = '500px';
+          icon.classList.add('open');
+        } else {
+          gb.style.maxHeight = '0px';
+          icon.classList.remove('open');
+        }
+      });
+
+      sec.appendChild(gh);
+      sec.appendChild(gb);
+      card.appendChild(sec);
+    }
+
+    inner.appendChild(card);
+  });
+
+  body.appendChild(inner);
+  wrapper.appendChild(body);
+
+  // Toggle behavior
+  header.addEventListener('click', () => {
+    const toggleText = document.getElementById('cat-detail-toggle-text');
+    if (body.classList.contains('open')) {
+      body.classList.remove('open');
+      toggleText.textContent = '▸ 펼치기';
+    } else {
+      body.classList.add('open');
+      toggleText.textContent = '▾ 접기';
+    }
+  });
+
+  section.appendChild(wrapper);
+}
+
+// ── Group TE (dual: {price: {1M:[], ...}, flow: {1M:[], ...}}) ──
+function renderGroupTE(teData) {
+  if (!teData || typeof teData !== 'object') return;
+  const card = document.getElementById('group-te-card');
+  const grid = document.getElementById('group-te-grid');
+  const windowOrder = ['2W', '1M', '3M', '6M'];
+  const windowLabels = {'2W': '2주 (10일)', '1M': '1개월 (21일)', '3M': '3개월 (63일)', '6M': '6개월 (126일)'};
+
+  // Dual mode: {price: {...}, flow: {...}} or legacy single mode
+  const priceData = teData.price || teData;
+  const flowData = teData.flow || {};
+  const hasDual = !!teData.price;
+
+  let hasData = false;
+  let gridHtml = '';
+
+  function buildRows(rows, colorScheme) {
+    if (!rows || rows.length === 0) return '';
+    const maxZ = Math.max(...rows.map(t => t.net_z), 3);
+    let html = '';
+    rows.forEach(t => {
+      const pct = Math.min(t.net_z / maxZ * 100, 100);
+      let color;
+      if (colorScheme === 'price') {
+        color = t.net_z > 4 ? '#f87171' : t.net_z > 2.5 ? '#fbbf24' : '#60a5fa';
+      } else {
+        color = t.net_z > 4 ? '#c084fc' : t.net_z > 2.5 ? '#a78bfa' : '#22d3ee';
+      }
+      html += `<div class="te-flow-row">
+        <div class="te-dir" style="color:${color}">${t.direction}</div>
+        <div class="te-z" style="color:${color}">Z=${t.net_z > 0 ? '+' : ''}${t.net_z.toFixed(1)}</div>
+        <div class="te-lag">lag ${t.lag}</div>
+        <div class="te-bar"><div class="te-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+    });
+    return html;
+  }
+
+  windowOrder.forEach(key => {
+    const pRows = priceData[key] || [];
+    const fRows = flowData[key] || [];
+    if (pRows.length === 0 && fRows.length === 0) {
+      gridHtml += `<div class="te-panel">
+        <div class="te-panel-title">${windowLabels[key] || key}</div>
+        <div style="color:var(--text-muted);font-size:10px;padding:8px 0">데이터 부족</div>
+      </div>`;
+      return;
+    }
+    hasData = true;
+    let panelHtml = `<div class="te-panel"><div class="te-panel-title">${windowLabels[key] || key}</div>`;
+    if (pRows.length > 0) {
+      panelHtml += `<div class="te-section-label" style="color:#60a5fa">Price</div>`;
+      panelHtml += buildRows(pRows, 'price');
+    }
+    if (hasDual && fRows.length > 0) {
+      panelHtml += `<div class="te-section-label" style="color:#22d3ee">Flow</div>`;
+      panelHtml += buildRows(fRows, 'flow');
+    } else if (hasDual && fRows.length === 0) {
+      panelHtml += `<div class="te-section-label" style="color:var(--text-muted)">Flow — 부족</div>`;
+    }
+    panelHtml += `</div>`;
+    gridHtml += panelHtml;
+  });
+
+  if (hasData) {
+    card.hidden = false;
+    grid.innerHTML = gridHtml;
+  }
+}
+
+// ── Buying Efficiency ──
+function renderBuyingEfficiency(be) {
+  if (!be || be.error) return;
+  const card = document.getElementById('buying-eff-card');
+  const content = document.getElementById('buying-eff-content');
+  card.hidden = false;
+
+  const chgArrow = be.kospi_change > 0 ? '▲' : be.kospi_change < 0 ? '▼' : '--';
+  const chgColor = be.kospi_change > 0 ? 'var(--green)' : be.kospi_change < 0 ? 'var(--red)' : 'var(--text-dim)';
+  let effLabel = '', effColor = 'var(--text-dim)';
+  if (be.efficiency != null) {
+    if (be.efficiency > 0) { effLabel = '효율적'; effColor = 'var(--green)'; }
+    else if (be.efficiency > -5) { effLabel = '외인 매도 상쇄 중'; effColor = 'var(--yellow)'; }
+    else { effLabel = '방어 실패'; effColor = 'var(--red)'; }
+  }
+
+  let html = `<span style="color:var(--text-dim)">${be.date}</span> | `;
+  html += `코스피 <strong>${Number(be.kospi_close).toLocaleString()}</strong> <span style="color:${chgColor}">${chgArrow}${be.kospi_change > 0 ? '+' : ''}${be.kospi_change}p</span> | `;
+  html += `개인 <strong>${be.individual_net_buy > 0 ? '+' : ''}${be.individual_net_buy}조</strong>`;
+  if (be.foreign_net_buy != null) {
+    const fc = be.foreign_net_buy > 0 ? 'var(--green)' : 'var(--red)';
+    html += ` | <span style="color:${fc}">외인 ${be.foreign_net_buy > 0 ? '+' : ''}${be.foreign_net_buy}조</span>`;
+  }
+  if (be.efficiency != null) {
+    html += ` | 효율 <strong style="color:${effColor}">${be.efficiency > 0 ? '+' : ''}${be.efficiency}</strong> (${effLabel})`;
+  }
+  content.innerHTML = html;
+}
+
+// ── Timestamp ──
+function showTimestamp(generatedAt, dataDate) {
+  const ts = document.getElementById('timestamp');
+  const dd = document.getElementById('data-date');
+  const now = new Date();
+  ts.textContent = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} KST`;
+  if (dataDate) dd.textContent = `데이터 기준: ${dataDate}`;
+  if (generatedAt) dd.textContent += ` | 생성: ${generatedAt}`;
+}
+
+// ===================== MAIN: Inline JSON =====================
+const data = {
+  "version": 2,
+  "generated_at": "2026-02-10 00:06 KST",
+  "data_date": "2026-02-09 (월)",
+  "categories": {
+    "us_sectors": {
+      "label": "US Sectors (GICS 11)",
+      "icon": "🏛️",
+      "groups": {
+        "Tech": [
+          {
+            "Ticker": "XLK",
+            "Name": "Technology",
+            "Last": 142.24,
+            "1D %": 0.79,
+            "1W %": -2.08,
+            "1M %": -1.39,
+            "3M %": -1.47,
+            "6M %": 7.28,
+            "1Y %": 21.9,
+            "5D Ref": "02-02",
+            "5D Z": -0.71,
+            "Vol Δ%": 75.0,
+            "AvgDolVol": 4521246716.0,
+            "Group": "Tech"
+          },
+          {
+            "Ticker": "XLC",
+            "Name": "Communication",
+            "Last": 115.68,
+            "1D %": -0.07,
+            "1W %": -3.33,
+            "1M %": -1.53,
+            "3M %": 3.25,
+            "6M %": 8.2,
+            "1Y %": 13.72,
+            "5D Ref": "02-02",
+            "5D Z": -1.54,
+            "Vol Δ%": 13.0,
+            "AvgDolVol": 1088544191.0,
+            "Group": "Tech"
+          }
+        ],
+        "Cyclical": [
+          {
+            "Ticker": "XLF",
+            "Name": "Financials",
+            "Last": 54.13,
+            "1D %": -0.23,
+            "1W %": 0.19,
+            "1M %": -3.16,
+            "3M %": 3.65,
+            "6M %": 5.12,
+            "1Y %": 5.33,
+            "5D Ref": "02-02",
+            "5D Z": -0.03,
+            "Vol Δ%": 10.0,
+            "AvgDolVol": 2689231101.0,
+            "Group": "Cyclical"
+          },
+          {
+            "Ticker": "XLY",
+            "Name": "Consumer Disc.",
+            "Last": 116.79,
+            "1D %": -1.02,
+            "1W %": -4.25,
+            "1M %": -4.99,
+            "3M %": -0.62,
+            "6M %": 4.77,
+            "1Y %": 2.4,
+            "5D Ref": "02-02",
+            "5D Z": -1.48,
+            "Vol Δ%": 37.0,
+            "AvgDolVol": 1487979050.0,
+            "Group": "Cyclical"
+          },
+          {
+            "Ticker": "XLI",
+            "Name": "Industrials",
+            "Last": 173.34,
+            "1D %": 0.09,
+            "1W %": 3.47,
+            "1M %": 8.22,
+            "3M %": 13.99,
+            "6M %": 15.79,
+            "1Y %": 27.58,
+            "5D Ref": "02-02",
+            "5D Z": 1.24,
+            "Vol Δ%": 20.0,
+            "AvgDolVol": 2413299728.0,
+            "Group": "Cyclical"
+          }
+        ],
+        "Defensive": [
+          {
+            "Ticker": "XLV",
+            "Name": "Health Care",
+            "Last": 156.57,
+            "1D %": -0.72,
+            "1W %": 0.57,
+            "1M %": -0.98,
+            "3M %": 7.74,
+            "6M %": 21.36,
+            "1Y %": 8.3,
+            "5D Ref": "02-02",
+            "5D Z": 0.14,
+            "Vol Δ%": 38.0,
+            "AvgDolVol": 2552625308.0,
+            "Group": "Defensive"
+          },
+          {
+            "Ticker": "XLP",
+            "Name": "Consumer Staples",
+            "Last": 87.67,
+            "1D %": -0.31,
+            "1W %": 3.75,
+            "1M %": 11.76,
+            "3M %": 16.89,
+            "6M %": 7.87,
+            "1Y %": 13.33,
+            "5D Ref": "02-02",
+            "5D Z": 1.81,
+            "Vol Δ%": 50.0,
+            "AvgDolVol": 2418424068.0,
+            "Group": "Defensive"
+          },
+          {
+            "Ticker": "XLU",
+            "Name": "Utilities",
+            "Last": 43.26,
+            "1D %": -0.21,
+            "1W %": 1.5,
+            "1M %": 3.02,
+            "3M %": -1.46,
+            "6M %": 1.83,
+            "1Y %": 13.65,
+            "5D Ref": "02-02",
+            "5D Z": 0.61,
+            "Vol Δ%": -9.0,
+            "AvgDolVol": 1141519148.0,
+            "Group": "Defensive"
+          }
+        ],
+        "Commodity": [
+          {
+            "Ticker": "XLE",
+            "Name": "Energy",
+            "Last": 53.44,
+            "1D %": 0.35,
+            "1W %": 6.76,
+            "1M %": 14.79,
+            "3M %": 22.1,
+            "6M %": 27.99,
+            "1Y %": 24.69,
+            "5D Ref": "02-02",
+            "5D Z": 1.84,
+            "Vol Δ%": -10.0,
+            "AvgDolVol": 2798874900.0,
+            "Group": "Commodity"
+          },
+          {
+            "Ticker": "XLB",
+            "Name": "Materials",
+            "Last": 51.64,
+            "1D %": 0.25,
+            "1W %": 4.01,
+            "1M %": 8.72,
+            "3M %": 22.42,
+            "6M %": 18.06,
+            "1Y %": 17.85,
+            "5D Ref": "02-02",
+            "5D Z": 1.39,
+            "Vol Δ%": 15.0,
+            "AvgDolVol": 1148320220.0,
+            "Group": "Commodity"
+          }
+        ],
+        "Rate-Sensitive": [
+          {
+            "Ticker": "XLRE",
+            "Name": "Real Estate",
+            "Last": 41.86,
+            "1D %": -0.31,
+            "1W %": 2.2,
+            "1M %": 3.51,
+            "3M %": 3.9,
+            "6M %": 3.37,
+            "1Y %": 2.81,
+            "5D Ref": "02-02",
+            "5D Z": 0.98,
+            "Vol Δ%": -13.0,
+            "AvgDolVol": 313917536.0,
+            "Group": "Rate-Sensitive"
+          }
+        ]
+      },
+      "summary": {
+        "Tech": {
+          "1D %": 0.36,
+          "1W %": -2.7,
+          "1M %": -1.46,
+          "3M %": 0.89,
+          "6M %": 7.74,
+          "1Y %": 17.81,
+          "trading_impact": -757321772.0,
+          "avg_dol_vol": 5609790907.0
+        },
+        "Cyclical": {
+          "1D %": -0.39,
+          "1W %": -0.2,
+          "1M %": 0.02,
+          "3M %": 5.67,
+          "6M %": 8.56,
+          "1Y %": 11.77,
+          "trading_impact": -65905099.0,
+          "avg_dol_vol": 6590509879.0
+        },
+        "Defensive": {
+          "1D %": -0.41,
+          "1W %": 1.94,
+          "1M %": 4.6,
+          "3M %": 7.72,
+          "6M %": 10.35,
+          "1Y %": 11.76,
+          "trading_impact": 592919147.0,
+          "avg_dol_vol": 6112568524.0
+        },
+        "Commodity": {
+          "1D %": 0.3,
+          "1W %": 5.38,
+          "1M %": 11.76,
+          "3M %": 22.26,
+          "6M %": 23.02,
+          "1Y %": 21.27,
+          "trading_impact": 1061795487.0,
+          "avg_dol_vol": 3947195120.0
+        },
+        "Rate-Sensitive": {
+          "1D %": -0.31,
+          "1W %": 2.2,
+          "1M %": 3.51,
+          "3M %": 3.9,
+          "6M %": 3.37,
+          "1Y %": 2.81,
+          "trading_impact": 34530929.0,
+          "avg_dol_vol": 313917536.0
+        }
+      }
+    },
+    "regional": {
+      "label": "Regional Flow",
+      "icon": "🌍",
+      "groups": {
+        "DM Americas": [
+          {
+            "Ticker": "SPY",
+            "Name": "S&P 500",
+            "Last": 691.39,
+            "1D %": 0.11,
+            "1W %": -0.58,
+            "1M %": 0.27,
+            "3M %": 3.45,
+            "6M %": 9.13,
+            "1Y %": 15.37,
+            "5D Ref": "02-02",
+            "5D Z": -0.4,
+            "Vol Δ%": 8.0,
+            "AvgDolVol": 58930117376.0,
+            "Group": "DM Americas"
+          },
+          {
+            "Ticker": "EWC",
+            "Name": "MSCI Canada",
+            "Last": 55.58,
+            "1D %": 1.04,
+            "1W %": 1.89,
+            "1M %": 2.06,
+            "3M %": 12.71,
+            "6M %": 18.45,
+            "1Y %": 35.05,
+            "5D Ref": "02-02",
+            "5D Z": 0.63,
+            "Vol Δ%": -53.0,
+            "AvgDolVol": 132540896.0,
+            "Group": "DM Americas"
+          }
+        ],
+        "DM Europe": [
+          {
+            "Ticker": "VGK",
+            "Name": "FTSE Europe",
+            "Last": 89.14,
+            "1D %": 0.73,
+            "1W %": 1.06,
+            "1M %": 4.64,
+            "3M %": 13.05,
+            "6M %": 16.21,
+            "1Y %": 34.34,
+            "5D Ref": "02-02",
+            "5D Z": 0.16,
+            "Vol Δ%": -45.0,
+            "AvgDolVol": 232225072.0,
+            "Group": "DM Europe"
+          },
+          {
+            "Ticker": "EWU",
+            "Name": "MSCI UK",
+            "Last": 46.72,
+            "1D %": -0.37,
+            "1W %": 0.4,
+            "1M %": 4.76,
+            "3M %": 11.75,
+            "6M %": 17.51,
+            "1Y %": 34.78,
+            "5D Ref": "02-02",
+            "5D Z": -0.13,
+            "Vol Δ%": 54.0,
+            "AvgDolVol": 136946070.0,
+            "Group": "DM Europe"
+          },
+          {
+            "Ticker": "EWG",
+            "Name": "MSCI Germany",
+            "Last": 44.14,
+            "1D %": 1.4,
+            "1W %": 1.52,
+            "1M %": 1.92,
+            "3M %": 9.28,
+            "6M %": 4.25,
+            "1Y %": 27.81,
+            "5D Ref": "02-02",
+            "5D Z": 0.34,
+            "Vol Δ%": -50.0,
+            "AvgDolVol": 64804600.0,
+            "Group": "DM Europe"
+          }
+        ],
+        "DM Asia-Pac": [
+          {
+            "Ticker": "EWJ",
+            "Name": "MSCI Japan",
+            "Last": 90.62,
+            "1D %": 1.37,
+            "1W %": 5.51,
+            "1M %": 9.37,
+            "3M %": 13.33,
+            "6M %": 20.64,
+            "1Y %": 36.57,
+            "5D Ref": "02-02",
+            "5D Z": 1.87,
+            "Vol Δ%": -17.0,
+            "AvgDolVol": 751559804.0,
+            "Group": "DM Asia-Pac"
+          },
+          {
+            "Ticker": "EWA",
+            "Name": "MSCI Australia",
+            "Last": 28.69,
+            "1D %": 1.63,
+            "1W %": 2.65,
+            "1M %": 8.8,
+            "3M %": 10.28,
+            "6M %": 9.58,
+            "1Y %": 17.9,
+            "5D Ref": "02-02",
+            "5D Z": 0.89,
+            "Vol Δ%": -32.0,
+            "AvgDolVol": 162865568.0,
+            "Group": "DM Asia-Pac"
+          },
+          {
+            "Ticker": "EWH",
+            "Name": "MSCI Hong Kong",
+            "Last": 23.7,
+            "1D %": 0.32,
+            "1W %": 1.96,
+            "1M %": 7.12,
+            "3M %": 10.21,
+            "6M %": 16.23,
+            "1Y %": 53.16,
+            "5D Ref": "02-02",
+            "5D Z": 0.41,
+            "Vol Δ%": 7.0,
+            "AvgDolVol": 122248144.0,
+            "Group": "DM Asia-Pac"
+          },
+          {
+            "Ticker": "EWS",
+            "Name": "MSCI Singapore",
+            "Last": 28.41,
+            "1D %": -0.3,
+            "1W %": 0.41,
+            "1M %": 0.51,
+            "3M %": 2.49,
+            "6M %": 7.44,
+            "1Y %": 30.26,
+            "5D Ref": "02-02",
+            "5D Z": -0.07,
+            "Vol Δ%": 9.0,
+            "AvgDolVol": 29141427.0,
+            "Group": "DM Asia-Pac"
+          }
+        ],
+        "EM Asia": [
+          {
+            "Ticker": "FXI",
+            "Name": "China Large Cap",
+            "Last": 39.38,
+            "1D %": 0.4,
+            "1W %": 0.52,
+            "1M %": -0.06,
+            "3M %": -0.84,
+            "6M %": 5.66,
+            "1Y %": 25.04,
+            "5D Ref": "02-02",
+            "5D Z": -0.03,
+            "Vol Δ%": -16.0,
+            "AvgDolVol": 1257582943.0,
+            "Group": "EM Asia"
+          },
+          {
+            "Ticker": "EWY",
+            "Name": "MSCI Korea",
+            "Last": 125.65,
+            "1D %": 0.75,
+            "1W %": 3.9,
+            "1M %": 17.88,
+            "3M %": 37.39,
+            "6M %": 74.79,
+            "1Y %": 132.66,
+            "5D Ref": "02-02",
+            "5D Z": 0.61,
+            "Vol Δ%": -7.0,
+            "AvgDolVol": 1599824694.0,
+            "Group": "EM Asia"
+          },
+          {
+            "Ticker": "EWT",
+            "Name": "MSCI Taiwan",
+            "Last": 70.69,
+            "1D %": 0.91,
+            "1W %": 2.54,
+            "1M %": 8.02,
+            "3M %": 13.86,
+            "6M %": 22.64,
+            "1Y %": 41.48,
+            "5D Ref": "02-02",
+            "5D Z": 0.55,
+            "Vol Δ%": -4.0,
+            "AvgDolVol": 368569001.0,
+            "Group": "EM Asia"
+          },
+          {
+            "Ticker": "INDA",
+            "Name": "MSCI India",
+            "Last": 53.47,
+            "1D %": 0.37,
+            "1W %": 0.37,
+            "1M %": -0.46,
+            "3M %": -0.27,
+            "6M %": 2.6,
+            "1Y %": 5.16,
+            "5D Ref": "02-02",
+            "5D Z": 0.15,
+            "Vol Δ%": -25.0,
+            "AvgDolVol": 492585425.0,
+            "Group": "EM Asia"
+          },
+          {
+            "Ticker": "EIDO",
+            "Name": "MSCI Indonesia",
+            "Last": 17.57,
+            "1D %": -0.17,
+            "1W %": 0.92,
+            "1M %": -7.48,
+            "3M %": -3.79,
+            "6M %": -0.5,
+            "1Y %": 3.61,
+            "5D Ref": "02-02",
+            "5D Z": 0.27,
+            "Vol Δ%": -61.0,
+            "AvgDolVol": 16677504.0,
+            "Group": "EM Asia"
+          }
+        ],
+        "EM Latam": [
+          {
+            "Ticker": "EWZ",
+            "Name": "MSCI Brazil",
+            "Last": 38.04,
+            "1D %": 1.28,
+            "1W %": 1.58,
+            "1M %": 15.69,
+            "3M %": 22.89,
+            "6M %": 41.58,
+            "1Y %": 55.63,
+            "5D Ref": "02-02",
+            "5D Z": 0.14,
+            "Vol Δ%": -22.0,
+            "AvgDolVol": 1618690901.0,
+            "Group": "EM Latam"
+          },
+          {
+            "Ticker": "EWW",
+            "Name": "MSCI Mexico",
+            "Last": 80.57,
+            "1D %": 0.88,
+            "1W %": 6.81,
+            "1M %": 14.32,
+            "3M %": 22.62,
+            "6M %": 33.22,
+            "1Y %": 64.86,
+            "5D Ref": "02-02",
+            "5D Z": 2.19,
+            "Vol Δ%": -17.0,
+            "AvgDolVol": 136624050.0,
+            "Group": "EM Latam"
+          }
+        ],
+        "EM Broad": [
+          {
+            "Ticker": "EEM",
+            "Name": "iShares EM",
+            "Last": 60.44,
+            "1D %": 0.62,
+            "1W %": 1.96,
+            "1M %": 6.28,
+            "3M %": 12.05,
+            "6M %": 24.0,
+            "1Y %": 43.15,
+            "5D Ref": "02-02",
+            "5D Z": 0.51,
+            "Vol Δ%": -39.0,
+            "AvgDolVol": 2211653951.0,
+            "Group": "EM Broad"
+          },
+          {
+            "Ticker": "VWO",
+            "Name": "Vanguard EM",
+            "Last": 57.69,
+            "1D %": 0.75,
+            "1W %": 1.6,
+            "1M %": 4.3,
+            "3M %": 7.76,
+            "6M %": 16.65,
+            "1Y %": 32.32,
+            "5D Ref": "02-02",
+            "5D Z": 0.45,
+            "Vol Δ%": -35.0,
+            "AvgDolVol": 654742778.0,
+            "Group": "EM Broad"
+          }
+        ],
+        "DM Broad": [
+          {
+            "Ticker": "EFA",
+            "Name": "EAFE (DM ex-US)",
+            "Last": 103.56,
+            "1D %": 0.93,
+            "1W %": 2.13,
+            "1M %": 5.74,
+            "3M %": 12.23,
+            "6M %": 16.67,
+            "1Y %": 33.46,
+            "5D Ref": "02-02",
+            "5D Z": 0.67,
+            "Vol Δ%": -24.0,
+            "AvgDolVol": 1859346387.0,
+            "Group": "DM Broad"
+          }
+        ]
+      },
+      "summary": {
+        "DM Americas": {
+          "1D %": 0.58,
+          "1W %": 0.66,
+          "1M %": 1.16,
+          "3M %": 8.08,
+          "6M %": 13.79,
+          "1Y %": 25.21,
+          "trading_impact": 1949067723.0,
+          "avg_dol_vol": 59062658272.0
+        },
+        "DM Europe": {
+          "1D %": 0.59,
+          "1W %": 0.99,
+          "1M %": 3.77,
+          "3M %": 11.36,
+          "6M %": 12.66,
+          "1Y %": 32.31,
+          "trading_impact": 21481799.0,
+          "avg_dol_vol": 433975742.0
+        },
+        "DM Asia-Pac": {
+          "1D %": 0.76,
+          "1W %": 2.63,
+          "1M %": 6.45,
+          "3M %": 9.08,
+          "6M %": 13.47,
+          "1Y %": 34.47,
+          "trading_impact": 140154665.0,
+          "avg_dol_vol": 1065814943.0
+        },
+        "EM Asia": {
+          "1D %": 0.45,
+          "1W %": 1.65,
+          "1M %": 3.58,
+          "3M %": 9.27,
+          "6M %": 21.04,
+          "1Y %": 41.59,
+          "trading_impact": 308157264.0,
+          "avg_dol_vol": 3735239567.0
+        },
+        "EM Latam": {
+          "1D %": 1.08,
+          "1W %": 4.2,
+          "1M %": 15.0,
+          "3M %": 22.76,
+          "6M %": 37.4,
+          "1Y %": 60.24,
+          "trading_impact": 368616140.0,
+          "avg_dol_vol": 1755314951.0
+        },
+        "EM Broad": {
+          "1D %": 0.68,
+          "1W %": 1.78,
+          "1M %": 5.29,
+          "3M %": 9.91,
+          "6M %": 20.32,
+          "1Y %": 37.74,
+          "trading_impact": 255109309.0,
+          "avg_dol_vol": 2866396729.0
+        },
+        "DM Broad": {
+          "1D %": 0.93,
+          "1W %": 2.13,
+          "1M %": 5.74,
+          "3M %": 12.23,
+          "6M %": 16.67,
+          "1Y %": 33.46,
+          "trading_impact": 198020390.0,
+          "avg_dol_vol": 1859346387.0
+        }
+      }
+    },
+    "thematic": {
+      "label": "Thematic / Growth",
+      "icon": "🚀",
+      "groups": {
+        "Semiconductor": [
+          {
+            "Ticker": "SMH",
+            "Name": "VanEck Semi",
+            "Last": 405.21,
+            "1D %": 0.89,
+            "1W %": -0.68,
+            "1M %": 6.92,
+            "3M %": 15.78,
+            "6M %": 38.48,
+            "1Y %": 63.67,
+            "5D Ref": "02-02",
+            "5D Z": -0.34,
+            "Vol Δ%": 47.0,
+            "AvgDolVol": 4397548167.0,
+            "Group": "Semiconductor"
+          },
+          {
+            "Ticker": "SOXX",
+            "Name": "iShares Semi",
+            "Last": 350.85,
+            "1D %": 0.67,
+            "1W %": -0.52,
+            "1M %": 9.78,
+            "3M %": 18.11,
+            "6M %": 44.98,
+            "1Y %": 60.38,
+            "5D Ref": "02-02",
+            "5D Z": -0.29,
+            "Vol Δ%": 26.0,
+            "AvgDolVol": 3058580681.0,
+            "Group": "Semiconductor"
+          }
+        ],
+        "AI / Robotics": [
+          {
+            "Ticker": "BOTZ",
+            "Name": "Global Robotics & AI",
+            "Last": 37.88,
+            "1D %": 1.07,
+            "1W %": 2.74,
+            "1M %": 0.4,
+            "3M %": 5.74,
+            "6M %": 13.22,
+            "1Y %": 13.67,
+            "5D Ref": "02-02",
+            "5D Z": 0.66,
+            "Vol Δ%": -3.0,
+            "AvgDolVol": 32697613.0,
+            "Group": "AI / Robotics"
+          },
+          {
+            "Ticker": "IRBO",
+            "Name": "iShares Robotics & AI",
+            "Last": 50.68,
+            "1D %": 6.05,
+            "1W %": -1.61,
+            "1M %": 0.7,
+            "3M %": 2.3,
+            "6M %": 19.05,
+            "1Y %": 28.34,
+            "5D Ref": "01-30",
+            "5D Z": -0.51,
+            "Vol Δ%": 11.0,
+            "AvgDolVol": 37362279.0,
+            "Group": "AI / Robotics"
+          }
+        ],
+        "Clean Energy": [
+          {
+            "Ticker": "ICLN",
+            "Name": "Global Clean Energy",
+            "Last": 18.97,
+            "1D %": 1.93,
+            "1W %": 4.06,
+            "1M %": 10.81,
+            "3M %": 7.58,
+            "6M %": 39.65,
+            "1Y %": 69.04,
+            "5D Ref": "02-02",
+            "5D Z": 1.03,
+            "Vol Δ%": -25.0,
+            "AvgDolVol": 85541017.0,
+            "Group": "Clean Energy"
+          },
+          {
+            "Ticker": "TAN",
+            "Name": "Solar",
+            "Last": 58.18,
+            "1D %": 0.76,
+            "1W %": 8.36,
+            "1M %": 15.44,
+            "3M %": 15.8,
+            "6M %": 58.31,
+            "1Y %": 69.77,
+            "5D Ref": "02-02",
+            "5D Z": 1.43,
+            "Vol Δ%": -17.0,
+            "AvgDolVol": 82318134.0,
+            "Group": "Clean Energy"
+          }
+        ],
+        "Biotech": [
+          {
+            "Ticker": "XBI",
+            "Name": "Biotech SPDR",
+            "Last": 124.59,
+            "1D %": -0.73,
+            "1W %": -2.17,
+            "1M %": 0.71,
+            "3M %": 14.38,
+            "6M %": 46.36,
+            "1Y %": 33.94,
+            "5D Ref": "02-02",
+            "5D Z": -0.81,
+            "Vol Δ%": 23.0,
+            "AvgDolVol": 1153027899.0,
+            "Group": "Biotech"
+          }
+        ],
+        "Innovation": [
+          {
+            "Ticker": "ARKK",
+            "Name": "ARK Innovation",
+            "Last": 71.24,
+            "1D %": 1.18,
+            "1W %": -4.2,
+            "1M %": -11.56,
+            "3M %": -11.96,
+            "6M %": -4.71,
+            "1Y %": 13.58,
+            "5D Ref": "02-02",
+            "5D Z": -0.8,
+            "Vol Δ%": 59.0,
+            "AvgDolVol": 752032350.0,
+            "Group": "Innovation"
+          }
+        ],
+        "China Tech": [
+          {
+            "Ticker": "KWEB",
+            "Name": "China Internet",
+            "Last": 34.43,
+            "1D %": 0.35,
+            "1W %": -1.82,
+            "1M %": -4.15,
+            "3M %": -7.53,
+            "6M %": 1.95,
+            "1Y %": 14.83,
+            "5D Ref": "02-02",
+            "5D Z": -0.56,
+            "Vol Δ%": -10.0,
+            "AvgDolVol": 878574769.0,
+            "Group": "China Tech"
+          }
+        ]
+      },
+      "summary": {
+        "Semiconductor": {
+          "1D %": 0.78,
+          "1W %": -0.6,
+          "1M %": 8.35,
+          "3M %": 16.94,
+          "6M %": 41.73,
+          "1Y %": 62.03,
+          "trading_impact": -223683865.0,
+          "avg_dol_vol": 7456128848.0
+        },
+        "AI / Robotics": {
+          "1D %": 3.56,
+          "1W %": 0.57,
+          "1M %": 0.55,
+          "3M %": 4.02,
+          "6M %": 16.14,
+          "1Y %": 21.0,
+          "trading_impact": 1996707.0,
+          "avg_dol_vol": 70059892.0
+        },
+        "Clean Energy": {
+          "1D %": 1.34,
+          "1W %": 6.21,
+          "1M %": 13.12,
+          "3M %": 11.69,
+          "6M %": 48.98,
+          "1Y %": 69.4,
+          "trading_impact": 52120266.0,
+          "avg_dol_vol": 167859151.0
+        },
+        "Biotech": {
+          "1D %": -0.73,
+          "1W %": -2.17,
+          "1M %": 0.71,
+          "3M %": 14.38,
+          "6M %": 46.36,
+          "1Y %": 33.94,
+          "trading_impact": -125103527.0,
+          "avg_dol_vol": 1153027899.0
+        },
+        "Innovation": {
+          "1D %": 1.18,
+          "1W %": -4.2,
+          "1M %": -11.56,
+          "3M %": -11.96,
+          "6M %": -4.71,
+          "1Y %": 13.58,
+          "trading_impact": -157926794.0,
+          "avg_dol_vol": 752032350.0
+        },
+        "China Tech": {
+          "1D %": 0.35,
+          "1W %": -1.82,
+          "1M %": -4.15,
+          "3M %": -7.53,
+          "6M %": 1.95,
+          "1Y %": 14.83,
+          "trading_impact": -79950304.0,
+          "avg_dol_vol": 878574769.0
+        }
+      }
+    },
+    "risk_macro": {
+      "label": "Risk / Macro",
+      "icon": "⚡",
+      "groups": {
+        "Volatility": [
+          {
+            "Ticker": "^VIX",
+            "Name": "VIX",
+            "Last": 18.16,
+            "1D %": -10.85,
+            "1W %": 11.14,
+            "1M %": 17.54,
+            "3M %": -6.87,
+            "6M %": 19.87,
+            "1Y %": 17.16,
+            "5D Ref": "02-02",
+            "5D Z": 0.47,
+            "Vol Δ%": 0.0,
+            "AvgDolVol": 0.0,
+            "Group": "Volatility"
+          }
+        ],
+        "Safe Haven": [
+          {
+            "Ticker": "GLD",
+            "Name": "Gold",
+            "Last": 463.1,
+            "1D %": 1.68,
+            "1W %": 8.42,
+            "1M %": 12.54,
+            "3M %": 26.51,
+            "6M %": 47.93,
+            "1Y %": 75.8,
+            "5D Ref": "02-02",
+            "5D Z": 2.35,
+            "Vol Δ%": -68.0,
+            "AvgDolVol": 7825914403.0,
+            "Group": "Safe Haven"
+          }
+        ],
+        "Commodities": [
+          {
+            "Ticker": "USO",
+            "Name": "WTI Oil",
+            "Last": 77.71,
+            "1D %": 0.94,
+            "1W %": 3.17,
+            "1M %": 10.17,
+            "3M %": 9.64,
+            "6M %": 6.02,
+            "1Y %": 3.0,
+            "5D Ref": "02-02",
+            "5D Z": 0.71,
+            "Vol Δ%": -8.0,
+            "AvgDolVol": 652111512.0,
+            "Group": "Commodities"
+          },
+          {
+            "Ticker": "SLV",
+            "Name": "Silver",
+            "Last": 73.9,
+            "1D %": 5.29,
+            "1W %": 2.02,
+            "1M %": 6.01,
+            "3M %": 69.69,
+            "6M %": 111.87,
+            "1Y %": 151.53,
+            "5D Ref": "02-02",
+            "5D Z": -0.01,
+            "Vol Δ%": -59.0,
+            "AvgDolVol": 8375585606.0,
+            "Group": "Commodities"
+          },
+          {
+            "Ticker": "COPX",
+            "Name": "Copper Miners",
+            "Last": 87.57,
+            "1D %": 3.41,
+            "1W %": 2.78,
+            "1M %": 15.8,
+            "3M %": 49.26,
+            "6M %": 93.81,
+            "1Y %": 122.77,
+            "5D Ref": "02-02",
+            "5D Z": 0.22,
+            "Vol Δ%": -43.0,
+            "AvgDolVol": 567124280.0,
+            "Group": "Commodities"
+          },
+          {
+            "Ticker": "DBA",
+            "Name": "Agriculture",
+            "Last": 25.76,
+            "1D %": -0.04,
+            "1W %": 0.43,
+            "1M %": -0.96,
+            "3M %": 2.22,
+            "6M %": 1.83,
+            "1Y %": -3.58,
+            "5D Ref": "02-02",
+            "5D Z": 0.23,
+            "Vol Δ%": 2.0,
+            "AvgDolVol": 6482340.0,
+            "Group": "Commodities"
+          }
+        ],
+        "FX": [
+          {
+            "Ticker": "UUP",
+            "Name": "USD Index",
+            "Last": 26.8,
+            "1D %": -0.8,
+            "1W %": -0.72,
+            "1M %": -1.74,
+            "3M %": -1.67,
+            "6M %": 1.02,
+            "1Y %": -5.43,
+            "5D Ref": "02-02",
+            "5D Z": -0.61,
+            "Vol Δ%": -50.0,
+            "AvgDolVol": 31295175.0,
+            "Group": "FX"
+          },
+          {
+            "Ticker": "FXY",
+            "Name": "Yen ETF",
+            "Last": 59.07,
+            "1D %": 0.97,
+            "1W %": -0.02,
+            "1M %": 0.94,
+            "3M %": -1.73,
+            "6M %": -5.22,
+            "1Y %": -2.99,
+            "5D Ref": "02-02",
+            "5D Z": -0.03,
+            "Vol Δ%": -57.0,
+            "AvgDolVol": 11272919.0,
+            "Group": "FX"
+          },
+          {
+            "Ticker": "FXE",
+            "Name": "Euro ETF",
+            "Last": 110.02,
+            "1D %": 0.84,
+            "1W %": 1.12,
+            "1M %": 2.42,
+            "3M %": 3.49,
+            "6M %": 2.79,
+            "1Y %": 15.73,
+            "5D Ref": "02-02",
+            "5D Z": 0.76,
+            "Vol Δ%": -66.0,
+            "AvgDolVol": 10708880.0,
+            "Group": "FX"
+          }
+        ],
+        "Credit": [
+          {
+            "Ticker": "HYG",
+            "Name": "High Yield Corp",
+            "Last": 80.85,
+            "1D %": 0.04,
+            "1W %": 0.09,
+            "1M %": 0.38,
+            "3M %": 2.18,
+            "6M %": 3.73,
+            "1Y %": 7.63,
+            "5D Ref": "02-02",
+            "5D Z": -0.12,
+            "Vol Δ%": 7.0,
+            "AvgDolVol": 3438093106.0,
+            "Group": "Credit"
+          },
+          {
+            "Ticker": "LQD",
+            "Name": "Inv Grade Corp",
+            "Last": 110.37,
+            "1D %": -0.17,
+            "1W %": 0.28,
+            "1M %": 0.49,
+            "3M %": 0.63,
+            "6M %": 3.13,
+            "1Y %": 6.92,
+            "5D Ref": "02-02",
+            "5D Z": 0.13,
+            "Vol Δ%": -33.0,
+            "AvgDolVol": 2657514523.0,
+            "Group": "Credit"
+          }
+        ],
+        "Leverage": [
+          {
+            "Ticker": "TQQQ",
+            "Name": "Nasdaq 3x Bull",
+            "Last": 50.73,
+            "1D %": 0.27,
+            "1W %": -7.94,
+            "1M %": -6.39,
+            "3M %": -4.94,
+            "6M %": 10.36,
+            "1Y %": 18.93,
+            "5D Ref": "02-02",
+            "5D Z": -1.02,
+            "Vol Δ%": 32.0,
+            "AvgDolVol": 5769027141.0,
+            "Group": "Leverage"
+          },
+          {
+            "Ticker": "SQQQ",
+            "Name": "Nasdaq 3x Bear",
+            "Last": 69.8,
+            "1D %": -0.27,
+            "1W %": 7.53,
+            "1M %": 4.82,
+            "3M %": -0.0,
+            "6M %": -17.01,
+            "1Y %": -46.48,
+            "5D Ref": "02-02",
+            "5D Z": 0.95,
+            "Vol Δ%": 5.0,
+            "AvgDolVol": 4205116121.0,
+            "Group": "Leverage"
+          },
+          {
+            "Ticker": "SOXL",
+            "Name": "Semi 3x Bull",
+            "Last": 62.99,
+            "1D %": 2.01,
+            "1W %": -3.39,
+            "1M %": 26.87,
+            "3M %": 46.45,
+            "6M %": 145.07,
+            "1Y %": 128.98,
+            "5D Ref": "02-02",
+            "5D Z": -0.39,
+            "Vol Δ%": 32.0,
+            "AvgDolVol": 5633571487.0,
+            "Group": "Leverage"
+          },
+          {
+            "Ticker": "SOXS",
+            "Name": "Semi 3x Bear",
+            "Last": 1.84,
+            "1D %": -1.62,
+            "1W %": -0.56,
+            "1M %": -28.42,
+            "3M %": -47.78,
+            "6M %": -74.74,
+            "1Y %": -90.44,
+            "5D Ref": "02-02",
+            "5D Z": 0.15,
+            "Vol Δ%": 32.0,
+            "AvgDolVol": 1441525745.0,
+            "Group": "Leverage"
+          },
+          {
+            "Ticker": "UPRO",
+            "Name": "S&P 3x Bull",
+            "Last": 118.88,
+            "1D %": 0.34,
+            "1W %": -2.1,
+            "1M %": -0.4,
+            "3M %": 6.67,
+            "6M %": 20.96,
+            "1Y %": 24.31,
+            "5D Ref": "02-02",
+            "5D Z": -0.42,
+            "Vol Δ%": 47.0,
+            "AvgDolVol": 688341289.0,
+            "Group": "Leverage"
+          },
+          {
+            "Ticker": "UVXY",
+            "Name": "VIX 1.5x Long",
+            "Last": 36.25,
+            "1D %": -2.82,
+            "1W %": 4.68,
+            "1M %": 3.13,
+            "3M %": -34.68,
+            "6M %": -49.97,
+            "1Y %": -60.32,
+            "5D Ref": "02-02",
+            "5D Z": 0.4,
+            "Vol Δ%": 31.0,
+            "AvgDolVol": 401319659.0,
+            "Group": "Leverage"
+          },
+          {
+            "Ticker": "TMF",
+            "Name": "20Y Bond 3x Bull",
+            "Last": 37.21,
+            "1D %": -1.19,
+            "1W %": 1.75,
+            "1M %": -0.56,
+            "3M %": -8.2,
+            "6M %": -0.39,
+            "1Y %": -10.82,
+            "5D Ref": "02-02",
+            "5D Z": 0.35,
+            "Vol Δ%": -19.0,
+            "AvgDolVol": 216241331.0,
+            "Group": "Leverage"
+          },
+          {
+            "Ticker": "TBT",
+            "Name": "20Y Bond 2x Bear",
+            "Last": 34.9,
+            "1D %": 0.81,
+            "1W %": -1.11,
+            "1M %": 0.29,
+            "3M %": 5.9,
+            "6M %": -0.24,
+            "1Y %": 4.18,
+            "5D Ref": "02-02",
+            "5D Z": -0.34,
+            "Vol Δ%": -14.0,
+            "AvgDolVol": 11696311.0,
+            "Group": "Leverage"
+          }
+        ]
+      },
+      "summary": {
+        "Volatility": {
+          "1D %": -10.85,
+          "1W %": 11.14,
+          "1M %": 17.54,
+          "3M %": -6.87,
+          "6M %": 19.87,
+          "1Y %": 17.16,
+          "trading_impact": 0.0,
+          "avg_dol_vol": 0.0
+        },
+        "Safe Haven": {
+          "1D %": 1.68,
+          "1W %": 8.42,
+          "1M %": 12.54,
+          "3M %": 26.51,
+          "6M %": 47.93,
+          "1Y %": 75.8,
+          "trading_impact": 3294709964.0,
+          "avg_dol_vol": 7825914403.0
+        },
+        "Commodities": {
+          "1D %": 2.4,
+          "1W %": 2.1,
+          "1M %": 7.76,
+          "3M %": 32.7,
+          "6M %": 53.38,
+          "1Y %": 68.43,
+          "trading_impact": 1008136892.0,
+          "avg_dol_vol": 9601303738.0
+        },
+        "FX": {
+          "1D %": 0.34,
+          "1W %": 0.13,
+          "1M %": 0.54,
+          "3M %": 0.03,
+          "6M %": -0.47,
+          "1Y %": 2.44,
+          "trading_impact": 346300.0,
+          "avg_dol_vol": 53276974.0
+        },
+        "Credit": {
+          "1D %": -0.06,
+          "1W %": 0.18,
+          "1M %": 0.44,
+          "3M %": 1.4,
+          "6M %": 3.43,
+          "1Y %": 7.28,
+          "trading_impact": 54860469.0,
+          "avg_dol_vol": 6095607629.0
+        },
+        "Leverage": {
+          "1D %": -0.31,
+          "1W %": -0.14,
+          "1M %": -0.08,
+          "3M %": -4.57,
+          "6M %": 4.25,
+          "1Y %": -3.96,
+          "trading_impact": -128567874.0,
+          "avg_dol_vol": 18366839084.0
+        }
+      }
+    },
+    "bonds_fx": {
+      "label": "Bonds & Rates",
+      "icon": "🏦",
+      "groups": {
+        "US Curve": [
+          {
+            "Ticker": "SHY",
+            "Name": "1-3Y Treasury",
+            "Last": 82.88,
+            "1D %": 0.02,
+            "1W %": 0.22,
+            "1M %": 0.33,
+            "3M %": 1.02,
+            "6M %": 2.18,
+            "1Y %": 4.89,
+            "5D Ref": "02-02",
+            "5D Z": 0.74,
+            "Vol Δ%": 5.0,
+            "AvgDolVol": 366047369.0,
+            "Group": "US Curve"
+          },
+          {
+            "Ticker": "IEF",
+            "Name": "7-10Y Treasury",
+            "Last": 95.99,
+            "1D %": -0.09,
+            "1W %": 0.57,
+            "1M %": 0.11,
+            "3M %": 0.26,
+            "6M %": 2.56,
+            "1Y %": 6.69,
+            "5D Ref": "02-02",
+            "5D Z": 0.56,
+            "Vol Δ%": -36.0,
+            "AvgDolVol": 678828917.0,
+            "Group": "US Curve"
+          },
+          {
+            "Ticker": "TLT",
+            "Name": "20Y+ Treasury",
+            "Last": 87.15,
+            "1D %": -0.44,
+            "1W %": 0.7,
+            "1M %": 0.16,
+            "3M %": -1.8,
+            "6M %": 2.08,
+            "1Y %": 1.34,
+            "5D Ref": "02-02",
+            "5D Z": 0.37,
+            "Vol Δ%": -23.0,
+            "AvgDolVol": 2697500177.0,
+            "Group": "US Curve"
+          }
+        ],
+        "Inflation": [
+          {
+            "Ticker": "TIP",
+            "Name": "TIPS Bond",
+            "Last": 110.64,
+            "1D %": -0.03,
+            "1W %": 0.4,
+            "1M %": 0.55,
+            "3M %": 0.38,
+            "6M %": 1.75,
+            "1Y %": 5.31,
+            "5D Ref": "02-02",
+            "5D Z": 0.48,
+            "Vol Δ%": -19.0,
+            "AvgDolVol": 237544396.0,
+            "Group": "Inflation"
+          }
+        ],
+        "Aggregate": [
+          {
+            "Ticker": "AGG",
+            "Name": "US Agg Bond",
+            "Last": 100.04,
+            "1D %": -0.09,
+            "1W %": 0.35,
+            "1M %": 0.42,
+            "3M %": 0.78,
+            "6M %": 3.11,
+            "1Y %": 6.4,
+            "5D Ref": "02-02",
+            "5D Z": 0.34,
+            "Vol Δ%": -25.0,
+            "AvgDolVol": 870254025.0,
+            "Group": "Aggregate"
+          },
+          {
+            "Ticker": "BND",
+            "Name": "Total Bond Market",
+            "Last": 74.17,
+            "1D %": -0.09,
+            "1W %": 0.35,
+            "1M %": 0.38,
+            "3M %": 0.71,
+            "6M %": 3.01,
+            "1Y %": 6.26,
+            "5D Ref": "02-02",
+            "5D Z": 0.36,
+            "Vol Δ%": -15.0,
+            "AvgDolVol": 668898280.0,
+            "Group": "Aggregate"
+          }
+        ],
+        "EM Bonds": [
+          {
+            "Ticker": "EMB",
+            "Name": "EM USD Bond",
+            "Last": 96.63,
+            "1D %": -0.06,
+            "1W %": 0.51,
+            "1M %": 1.08,
+            "3M %": 1.92,
+            "6M %": 6.09,
+            "1Y %": 11.74,
+            "5D Ref": "02-02",
+            "5D Z": 0.33,
+            "Vol Δ%": -12.0,
+            "AvgDolVol": 843771543.0,
+            "Group": "EM Bonds"
+          }
+        ]
+      },
+      "summary": {
+        "US Curve": {
+          "1D %": -0.17,
+          "1W %": 0.5,
+          "1M %": 0.2,
+          "3M %": -0.17,
+          "6M %": 2.27,
+          "1Y %": 4.31,
+          "trading_impact": 93559412.0,
+          "avg_dol_vol": 3742376463.0
+        },
+        "Inflation": {
+          "1D %": -0.03,
+          "1W %": 0.4,
+          "1M %": 0.55,
+          "3M %": 0.38,
+          "6M %": 1.75,
+          "1Y %": 5.31,
+          "trading_impact": 4750888.0,
+          "avg_dol_vol": 237544396.0
+        },
+        "Aggregate": {
+          "1D %": -0.09,
+          "1W %": 0.35,
+          "1M %": 0.4,
+          "3M %": 0.74,
+          "6M %": 3.06,
+          "1Y %": 6.33,
+          "trading_impact": 26935165.0,
+          "avg_dol_vol": 1539152305.0
+        },
+        "EM Bonds": {
+          "1D %": -0.06,
+          "1W %": 0.51,
+          "1M %": 1.08,
+          "3M %": 1.92,
+          "6M %": 6.09,
+          "1Y %": 11.74,
+          "trading_impact": 21516174.0,
+          "avg_dol_vol": 843771543.0
+        }
+      }
+    }
+  },
+  "signals": [
+    {
+      "level": "🟡 MED",
+      "signal": "금 + 유가 동시 상승 — 달러 약세 주도 (명목 상승)",
+      "implication": "달러 약세가 원자재 가격을 밀어올림. EM 자금유입에는 우호적.",
+      "data": "금 1W: +8.4%, 유가 1W: +3.2% | TLT 1W: +0.7%, USD 1W: -0.7%, FXI 1W: +0.5%"
+    }
+  ],
+  "kpi": {
+    "rotation_score": 2.54,
+    "em_relative_5d": 2.2,
+    "vix": 18.16,
+    "hyg_lqd_spread_5d": -0.19,
+    "spy_vs_efa_5d": -2.71
+  },
+  "buying_efficiency": null,
+  "_v1_compat": {
+    "rotation": [
+      {
+        "Group": "Tech",
+        "Ticker": "XLK",
+        "Name": "Technology",
+        "1D %": 0.79,
+        "1W %": -2.08,
+        "1M %": -1.39,
+        "3M %": -1.47,
+        "6M %": 7.28,
+        "1Y %": 21.9,
+        "Vol Δ%": 75.0
+      },
+      {
+        "Group": "Tech",
+        "Ticker": "XLC",
+        "Name": "Communication",
+        "1D %": -0.07,
+        "1W %": -3.33,
+        "1M %": -1.53,
+        "3M %": 3.25,
+        "6M %": 8.2,
+        "1Y %": 13.72,
+        "Vol Δ%": 13.0
+      },
+      {
+        "Group": "Cyclical",
+        "Ticker": "XLF",
+        "Name": "Financials",
+        "1D %": -0.23,
+        "1W %": 0.19,
+        "1M %": -3.16,
+        "3M %": 3.65,
+        "6M %": 5.12,
+        "1Y %": 5.33,
+        "Vol Δ%": 10.0
+      },
+      {
+        "Group": "Cyclical",
+        "Ticker": "XLY",
+        "Name": "Consumer Disc.",
+        "1D %": -1.02,
+        "1W %": -4.25,
+        "1M %": -4.99,
+        "3M %": -0.62,
+        "6M %": 4.77,
+        "1Y %": 2.4,
+        "Vol Δ%": 37.0
+      },
+      {
+        "Group": "Cyclical",
+        "Ticker": "XLI",
+        "Name": "Industrials",
+        "1D %": 0.09,
+        "1W %": 3.47,
+        "1M %": 8.22,
+        "3M %": 13.99,
+        "6M %": 15.79,
+        "1Y %": 27.58,
+        "Vol Δ%": 20.0
+      },
+      {
+        "Group": "Defensive",
+        "Ticker": "XLV",
+        "Name": "Health Care",
+        "1D %": -0.72,
+        "1W %": 0.57,
+        "1M %": -0.98,
+        "3M %": 7.74,
+        "6M %": 21.36,
+        "1Y %": 8.3,
+        "Vol Δ%": 38.0
+      },
+      {
+        "Group": "Defensive",
+        "Ticker": "XLP",
+        "Name": "Consumer Staples",
+        "1D %": -0.31,
+        "1W %": 3.75,
+        "1M %": 11.76,
+        "3M %": 16.89,
+        "6M %": 7.87,
+        "1Y %": 13.33,
+        "Vol Δ%": 50.0
+      },
+      {
+        "Group": "Defensive",
+        "Ticker": "XLU",
+        "Name": "Utilities",
+        "1D %": -0.21,
+        "1W %": 1.5,
+        "1M %": 3.02,
+        "3M %": -1.46,
+        "6M %": 1.83,
+        "1Y %": 13.65,
+        "Vol Δ%": -9.0
+      },
+      {
+        "Group": "Commodity",
+        "Ticker": "XLE",
+        "Name": "Energy",
+        "1D %": 0.35,
+        "1W %": 6.76,
+        "1M %": 14.79,
+        "3M %": 22.1,
+        "6M %": 27.99,
+        "1Y %": 24.69,
+        "Vol Δ%": -10.0
+      },
+      {
+        "Group": "Commodity",
+        "Ticker": "XLB",
+        "Name": "Materials",
+        "1D %": 0.25,
+        "1W %": 4.01,
+        "1M %": 8.72,
+        "3M %": 22.42,
+        "6M %": 18.06,
+        "1Y %": 17.85,
+        "Vol Δ%": 15.0
+      },
+      {
+        "Group": "Rate-Sensitive",
+        "Ticker": "XLRE",
+        "Name": "Real Estate",
+        "1D %": -0.31,
+        "1W %": 2.2,
+        "1M %": 3.51,
+        "3M %": 3.9,
+        "6M %": 3.37,
+        "1Y %": 2.81,
+        "Vol Δ%": -13.0
+      },
+      {
+        "Group": "Semiconductor",
+        "Ticker": "SMH",
+        "Name": "VanEck Semi",
+        "1D %": 0.89,
+        "1W %": -0.68,
+        "1M %": 6.92,
+        "3M %": 15.78,
+        "6M %": 38.48,
+        "1Y %": 63.67,
+        "Vol Δ%": 47.0
+      },
+      {
+        "Group": "Semiconductor",
+        "Ticker": "SOXX",
+        "Name": "iShares Semi",
+        "1D %": 0.67,
+        "1W %": -0.52,
+        "1M %": 9.78,
+        "3M %": 18.11,
+        "6M %": 44.98,
+        "1Y %": 60.38,
+        "Vol Δ%": 26.0
+      },
+      {
+        "Group": "AI / Robotics",
+        "Ticker": "BOTZ",
+        "Name": "Global Robotics & AI",
+        "1D %": 1.07,
+        "1W %": 2.74,
+        "1M %": 0.4,
+        "3M %": 5.74,
+        "6M %": 13.22,
+        "1Y %": 13.67,
+        "Vol Δ%": -3.0
+      },
+      {
+        "Group": "AI / Robotics",
+        "Ticker": "IRBO",
+        "Name": "iShares Robotics & AI",
+        "1D %": 6.05,
+        "1W %": -1.61,
+        "1M %": 0.7,
+        "3M %": 2.3,
+        "6M %": 19.05,
+        "1Y %": 28.34,
+        "Vol Δ%": 11.0
+      },
+      {
+        "Group": "Clean Energy",
+        "Ticker": "ICLN",
+        "Name": "Global Clean Energy",
+        "1D %": 1.93,
+        "1W %": 4.06,
+        "1M %": 10.81,
+        "3M %": 7.58,
+        "6M %": 39.65,
+        "1Y %": 69.04,
+        "Vol Δ%": -25.0
+      },
+      {
+        "Group": "Clean Energy",
+        "Ticker": "TAN",
+        "Name": "Solar",
+        "1D %": 0.76,
+        "1W %": 8.36,
+        "1M %": 15.44,
+        "3M %": 15.8,
+        "6M %": 58.31,
+        "1Y %": 69.77,
+        "Vol Δ%": -17.0
+      },
+      {
+        "Group": "Biotech",
+        "Ticker": "XBI",
+        "Name": "Biotech SPDR",
+        "1D %": -0.73,
+        "1W %": -2.17,
+        "1M %": 0.71,
+        "3M %": 14.38,
+        "6M %": 46.36,
+        "1Y %": 33.94,
+        "Vol Δ%": 23.0
+      },
+      {
+        "Group": "Innovation",
+        "Ticker": "ARKK",
+        "Name": "ARK Innovation",
+        "1D %": 1.18,
+        "1W %": -4.2,
+        "1M %": -11.56,
+        "3M %": -11.96,
+        "6M %": -4.71,
+        "1Y %": 13.58,
+        "Vol Δ%": 59.0
+      },
+      {
+        "Group": "China Tech",
+        "Ticker": "KWEB",
+        "Name": "China Internet",
+        "1D %": 0.35,
+        "1W %": -1.82,
+        "1M %": -4.15,
+        "3M %": -7.53,
+        "6M %": 1.95,
+        "1Y %": 14.83,
+        "Vol Δ%": -10.0
+      }
+    ],
+    "em": [
+      {
+        "Group": "DM Americas",
+        "Ticker": "SPY",
+        "Name": "S&P 500",
+        "1D %": 0.11,
+        "1W %": -0.58,
+        "1M %": 0.27,
+        "3M %": 3.45,
+        "6M %": 9.13,
+        "1Y %": 15.37,
+        "Vol Δ%": 8.0
+      },
+      {
+        "Group": "DM Americas",
+        "Ticker": "EWC",
+        "Name": "MSCI Canada",
+        "1D %": 1.04,
+        "1W %": 1.89,
+        "1M %": 2.06,
+        "3M %": 12.71,
+        "6M %": 18.45,
+        "1Y %": 35.05,
+        "Vol Δ%": -53.0
+      },
+      {
+        "Group": "DM Europe",
+        "Ticker": "VGK",
+        "Name": "FTSE Europe",
+        "1D %": 0.73,
+        "1W %": 1.06,
+        "1M %": 4.64,
+        "3M %": 13.05,
+        "6M %": 16.21,
+        "1Y %": 34.34,
+        "Vol Δ%": -45.0
+      },
+      {
+        "Group": "DM Europe",
+        "Ticker": "EWU",
+        "Name": "MSCI UK",
+        "1D %": -0.37,
+        "1W %": 0.4,
+        "1M %": 4.76,
+        "3M %": 11.75,
+        "6M %": 17.51,
+        "1Y %": 34.78,
+        "Vol Δ%": 54.0
+      },
+      {
+        "Group": "DM Europe",
+        "Ticker": "EWG",
+        "Name": "MSCI Germany",
+        "1D %": 1.4,
+        "1W %": 1.52,
+        "1M %": 1.92,
+        "3M %": 9.28,
+        "6M %": 4.25,
+        "1Y %": 27.81,
+        "Vol Δ%": -50.0
+      },
+      {
+        "Group": "DM Asia-Pac",
+        "Ticker": "EWJ",
+        "Name": "MSCI Japan",
+        "1D %": 1.37,
+        "1W %": 5.51,
+        "1M %": 9.37,
+        "3M %": 13.33,
+        "6M %": 20.64,
+        "1Y %": 36.57,
+        "Vol Δ%": -17.0
+      },
+      {
+        "Group": "DM Asia-Pac",
+        "Ticker": "EWA",
+        "Name": "MSCI Australia",
+        "1D %": 1.63,
+        "1W %": 2.65,
+        "1M %": 8.8,
+        "3M %": 10.28,
+        "6M %": 9.58,
+        "1Y %": 17.9,
+        "Vol Δ%": -32.0
+      },
+      {
+        "Group": "DM Asia-Pac",
+        "Ticker": "EWH",
+        "Name": "MSCI Hong Kong",
+        "1D %": 0.32,
+        "1W %": 1.96,
+        "1M %": 7.12,
+        "3M %": 10.21,
+        "6M %": 16.23,
+        "1Y %": 53.16,
+        "Vol Δ%": 7.0
+      },
+      {
+        "Group": "DM Asia-Pac",
+        "Ticker": "EWS",
+        "Name": "MSCI Singapore",
+        "1D %": -0.3,
+        "1W %": 0.41,
+        "1M %": 0.51,
+        "3M %": 2.49,
+        "6M %": 7.44,
+        "1Y %": 30.26,
+        "Vol Δ%": 9.0
+      },
+      {
+        "Group": "EM Asia",
+        "Ticker": "FXI",
+        "Name": "China Large Cap",
+        "1D %": 0.4,
+        "1W %": 0.52,
+        "1M %": -0.06,
+        "3M %": -0.84,
+        "6M %": 5.66,
+        "1Y %": 25.04,
+        "Vol Δ%": -16.0
+      },
+      {
+        "Group": "EM Asia",
+        "Ticker": "EWY",
+        "Name": "MSCI Korea",
+        "1D %": 0.75,
+        "1W %": 3.9,
+        "1M %": 17.88,
+        "3M %": 37.39,
+        "6M %": 74.79,
+        "1Y %": 132.66,
+        "Vol Δ%": -7.0
+      },
+      {
+        "Group": "EM Asia",
+        "Ticker": "EWT",
+        "Name": "MSCI Taiwan",
+        "1D %": 0.91,
+        "1W %": 2.54,
+        "1M %": 8.02,
+        "3M %": 13.86,
+        "6M %": 22.64,
+        "1Y %": 41.48,
+        "Vol Δ%": -4.0
+      },
+      {
+        "Group": "EM Asia",
+        "Ticker": "INDA",
+        "Name": "MSCI India",
+        "1D %": 0.37,
+        "1W %": 0.37,
+        "1M %": -0.46,
+        "3M %": -0.27,
+        "6M %": 2.6,
+        "1Y %": 5.16,
+        "Vol Δ%": -25.0
+      },
+      {
+        "Group": "EM Asia",
+        "Ticker": "EIDO",
+        "Name": "MSCI Indonesia",
+        "1D %": -0.17,
+        "1W %": 0.92,
+        "1M %": -7.48,
+        "3M %": -3.79,
+        "6M %": -0.5,
+        "1Y %": 3.61,
+        "Vol Δ%": -61.0
+      },
+      {
+        "Group": "EM Latam",
+        "Ticker": "EWZ",
+        "Name": "MSCI Brazil",
+        "1D %": 1.28,
+        "1W %": 1.58,
+        "1M %": 15.69,
+        "3M %": 22.89,
+        "6M %": 41.58,
+        "1Y %": 55.63,
+        "Vol Δ%": -22.0
+      },
+      {
+        "Group": "EM Latam",
+        "Ticker": "EWW",
+        "Name": "MSCI Mexico",
+        "1D %": 0.88,
+        "1W %": 6.81,
+        "1M %": 14.32,
+        "3M %": 22.62,
+        "6M %": 33.22,
+        "1Y %": 64.86,
+        "Vol Δ%": -17.0
+      },
+      {
+        "Group": "EM Broad",
+        "Ticker": "EEM",
+        "Name": "iShares EM",
+        "1D %": 0.62,
+        "1W %": 1.96,
+        "1M %": 6.28,
+        "3M %": 12.05,
+        "6M %": 24.0,
+        "1Y %": 43.15,
+        "Vol Δ%": -39.0
+      },
+      {
+        "Group": "EM Broad",
+        "Ticker": "VWO",
+        "Name": "Vanguard EM",
+        "1D %": 0.75,
+        "1W %": 1.6,
+        "1M %": 4.3,
+        "3M %": 7.76,
+        "6M %": 16.65,
+        "1Y %": 32.32,
+        "Vol Δ%": -35.0
+      },
+      {
+        "Group": "DM Broad",
+        "Ticker": "EFA",
+        "Name": "EAFE (DM ex-US)",
+        "1D %": 0.93,
+        "1W %": 2.13,
+        "1M %": 5.74,
+        "3M %": 12.23,
+        "6M %": 16.67,
+        "1Y %": 33.46,
+        "Vol Δ%": -24.0
+      }
+    ],
+    "risk": [
+      {
+        "Group": "Volatility",
+        "Ticker": "^VIX",
+        "Name": "VIX",
+        "1D %": -10.85,
+        "1W %": 11.14,
+        "1M %": 17.54,
+        "3M %": -6.87,
+        "6M %": 19.87,
+        "1Y %": 17.16,
+        "Vol Δ%": 0.0
+      },
+      {
+        "Group": "Safe Haven",
+        "Ticker": "GLD",
+        "Name": "Gold",
+        "1D %": 1.68,
+        "1W %": 8.42,
+        "1M %": 12.54,
+        "3M %": 26.51,
+        "6M %": 47.93,
+        "1Y %": 75.8,
+        "Vol Δ%": -68.0
+      },
+      {
+        "Group": "Commodities",
+        "Ticker": "USO",
+        "Name": "WTI Oil",
+        "1D %": 0.94,
+        "1W %": 3.17,
+        "1M %": 10.17,
+        "3M %": 9.64,
+        "6M %": 6.02,
+        "1Y %": 3.0,
+        "Vol Δ%": -8.0
+      },
+      {
+        "Group": "Commodities",
+        "Ticker": "SLV",
+        "Name": "Silver",
+        "1D %": 5.29,
+        "1W %": 2.02,
+        "1M %": 6.01,
+        "3M %": 69.69,
+        "6M %": 111.87,
+        "1Y %": 151.53,
+        "Vol Δ%": -59.0
+      },
+      {
+        "Group": "Commodities",
+        "Ticker": "COPX",
+        "Name": "Copper Miners",
+        "1D %": 3.41,
+        "1W %": 2.78,
+        "1M %": 15.8,
+        "3M %": 49.26,
+        "6M %": 93.81,
+        "1Y %": 122.77,
+        "Vol Δ%": -43.0
+      },
+      {
+        "Group": "Commodities",
+        "Ticker": "DBA",
+        "Name": "Agriculture",
+        "1D %": -0.04,
+        "1W %": 0.43,
+        "1M %": -0.96,
+        "3M %": 2.22,
+        "6M %": 1.83,
+        "1Y %": -3.58,
+        "Vol Δ%": 2.0
+      },
+      {
+        "Group": "FX",
+        "Ticker": "UUP",
+        "Name": "USD Index",
+        "1D %": -0.8,
+        "1W %": -0.72,
+        "1M %": -1.74,
+        "3M %": -1.67,
+        "6M %": 1.02,
+        "1Y %": -5.43,
+        "Vol Δ%": -50.0
+      },
+      {
+        "Group": "FX",
+        "Ticker": "FXY",
+        "Name": "Yen ETF",
+        "1D %": 0.97,
+        "1W %": -0.02,
+        "1M %": 0.94,
+        "3M %": -1.73,
+        "6M %": -5.22,
+        "1Y %": -2.99,
+        "Vol Δ%": -57.0
+      },
+      {
+        "Group": "FX",
+        "Ticker": "FXE",
+        "Name": "Euro ETF",
+        "1D %": 0.84,
+        "1W %": 1.12,
+        "1M %": 2.42,
+        "3M %": 3.49,
+        "6M %": 2.79,
+        "1Y %": 15.73,
+        "Vol Δ%": -66.0
+      },
+      {
+        "Group": "Credit",
+        "Ticker": "HYG",
+        "Name": "High Yield Corp",
+        "1D %": 0.04,
+        "1W %": 0.09,
+        "1M %": 0.38,
+        "3M %": 2.18,
+        "6M %": 3.73,
+        "1Y %": 7.63,
+        "Vol Δ%": 7.0
+      },
+      {
+        "Group": "Credit",
+        "Ticker": "LQD",
+        "Name": "Inv Grade Corp",
+        "1D %": -0.17,
+        "1W %": 0.28,
+        "1M %": 0.49,
+        "3M %": 0.63,
+        "6M %": 3.13,
+        "1Y %": 6.92,
+        "Vol Δ%": -33.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "TQQQ",
+        "Name": "Nasdaq 3x Bull",
+        "1D %": 0.27,
+        "1W %": -7.94,
+        "1M %": -6.39,
+        "3M %": -4.94,
+        "6M %": 10.36,
+        "1Y %": 18.93,
+        "Vol Δ%": 32.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "SQQQ",
+        "Name": "Nasdaq 3x Bear",
+        "1D %": -0.27,
+        "1W %": 7.53,
+        "1M %": 4.82,
+        "3M %": -0.0,
+        "6M %": -17.01,
+        "1Y %": -46.48,
+        "Vol Δ%": 5.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "SOXL",
+        "Name": "Semi 3x Bull",
+        "1D %": 2.01,
+        "1W %": -3.39,
+        "1M %": 26.87,
+        "3M %": 46.45,
+        "6M %": 145.07,
+        "1Y %": 128.98,
+        "Vol Δ%": 32.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "SOXS",
+        "Name": "Semi 3x Bear",
+        "1D %": -1.62,
+        "1W %": -0.56,
+        "1M %": -28.42,
+        "3M %": -47.78,
+        "6M %": -74.74,
+        "1Y %": -90.44,
+        "Vol Δ%": 32.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "UPRO",
+        "Name": "S&P 3x Bull",
+        "1D %": 0.34,
+        "1W %": -2.1,
+        "1M %": -0.4,
+        "3M %": 6.67,
+        "6M %": 20.96,
+        "1Y %": 24.31,
+        "Vol Δ%": 47.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "UVXY",
+        "Name": "VIX 1.5x Long",
+        "1D %": -2.82,
+        "1W %": 4.68,
+        "1M %": 3.13,
+        "3M %": -34.68,
+        "6M %": -49.97,
+        "1Y %": -60.32,
+        "Vol Δ%": 31.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "TMF",
+        "Name": "20Y Bond 3x Bull",
+        "1D %": -1.19,
+        "1W %": 1.75,
+        "1M %": -0.56,
+        "3M %": -8.2,
+        "6M %": -0.39,
+        "1Y %": -10.82,
+        "Vol Δ%": -19.0
+      },
+      {
+        "Group": "Leverage",
+        "Ticker": "TBT",
+        "Name": "20Y Bond 2x Bear",
+        "1D %": 0.81,
+        "1W %": -1.11,
+        "1M %": 0.29,
+        "3M %": 5.9,
+        "6M %": -0.24,
+        "1Y %": 4.18,
+        "Vol Δ%": -14.0
+      },
+      {
+        "Group": "US Curve",
+        "Ticker": "SHY",
+        "Name": "1-3Y Treasury",
+        "1D %": 0.02,
+        "1W %": 0.22,
+        "1M %": 0.33,
+        "3M %": 1.02,
+        "6M %": 2.18,
+        "1Y %": 4.89,
+        "Vol Δ%": 5.0
+      },
+      {
+        "Group": "US Curve",
+        "Ticker": "IEF",
+        "Name": "7-10Y Treasury",
+        "1D %": -0.09,
+        "1W %": 0.57,
+        "1M %": 0.11,
+        "3M %": 0.26,
+        "6M %": 2.56,
+        "1Y %": 6.69,
+        "Vol Δ%": -36.0
+      },
+      {
+        "Group": "US Curve",
+        "Ticker": "TLT",
+        "Name": "20Y+ Treasury",
+        "1D %": -0.44,
+        "1W %": 0.7,
+        "1M %": 0.16,
+        "3M %": -1.8,
+        "6M %": 2.08,
+        "1Y %": 1.34,
+        "Vol Δ%": -23.0
+      },
+      {
+        "Group": "Inflation",
+        "Ticker": "TIP",
+        "Name": "TIPS Bond",
+        "1D %": -0.03,
+        "1W %": 0.4,
+        "1M %": 0.55,
+        "3M %": 0.38,
+        "6M %": 1.75,
+        "1Y %": 5.31,
+        "Vol Δ%": -19.0
+      },
+      {
+        "Group": "Aggregate",
+        "Ticker": "AGG",
+        "Name": "US Agg Bond",
+        "1D %": -0.09,
+        "1W %": 0.35,
+        "1M %": 0.42,
+        "3M %": 0.78,
+        "6M %": 3.11,
+        "1Y %": 6.4,
+        "Vol Δ%": -25.0
+      },
+      {
+        "Group": "Aggregate",
+        "Ticker": "BND",
+        "Name": "Total Bond Market",
+        "1D %": -0.09,
+        "1W %": 0.35,
+        "1M %": 0.38,
+        "3M %": 0.71,
+        "6M %": 3.01,
+        "1Y %": 6.26,
+        "Vol Δ%": -15.0
+      },
+      {
+        "Group": "EM Bonds",
+        "Ticker": "EMB",
+        "Name": "EM USD Bond",
+        "1D %": -0.06,
+        "1W %": 0.51,
+        "1M %": 1.08,
+        "3M %": 1.92,
+        "6M %": 6.09,
+        "1Y %": 11.74,
+        "Vol Δ%": -12.0
+      }
+    ]
+  },
+  "top_movers": {
+    "gainers": [
+      {
+        "Ticker": "GLD",
+        "Name": "Gold",
+        "1D %": 1.68,
+        "1W %": 8.42,
+        "1M %": 12.54,
+        "3M %": 26.51,
+        "6M %": 47.93,
+        "1Y %": 75.8,
+        "group": "Safe Haven",
+        "cat_icon": "⚡"
+      },
+      {
+        "Ticker": "TAN",
+        "Name": "Solar",
+        "1D %": 0.76,
+        "1W %": 8.36,
+        "1M %": 15.44,
+        "3M %": 15.8,
+        "6M %": 58.31,
+        "1Y %": 69.77,
+        "group": "Clean Energy",
+        "cat_icon": "🚀"
+      },
+      {
+        "Ticker": "EWW",
+        "Name": "MSCI Mexico",
+        "1D %": 0.88,
+        "1W %": 6.81,
+        "1M %": 14.32,
+        "3M %": 22.62,
+        "6M %": 33.22,
+        "1Y %": 64.86,
+        "group": "EM Latam",
+        "cat_icon": "🌍"
+      },
+      {
+        "Ticker": "XLE",
+        "Name": "Energy",
+        "1D %": 0.35,
+        "1W %": 6.76,
+        "1M %": 14.79,
+        "3M %": 22.1,
+        "6M %": 27.99,
+        "1Y %": 24.69,
+        "group": "Commodity",
+        "cat_icon": "🏛️"
+      },
+      {
+        "Ticker": "EWJ",
+        "Name": "MSCI Japan",
+        "1D %": 1.37,
+        "1W %": 5.51,
+        "1M %": 9.37,
+        "3M %": 13.33,
+        "6M %": 20.64,
+        "1Y %": 36.57,
+        "group": "DM Asia-Pac",
+        "cat_icon": "🌍"
+      }
+    ],
+    "losers": [
+      {
+        "Ticker": "XLY",
+        "Name": "Consumer Disc.",
+        "1D %": -1.02,
+        "1W %": -4.25,
+        "1M %": -4.99,
+        "3M %": -0.62,
+        "6M %": 4.77,
+        "1Y %": 2.4,
+        "group": "Cyclical",
+        "cat_icon": "🏛️"
+      },
+      {
+        "Ticker": "ARKK",
+        "Name": "ARK Innovation",
+        "1D %": 1.18,
+        "1W %": -4.2,
+        "1M %": -11.56,
+        "3M %": -11.96,
+        "6M %": -4.71,
+        "1Y %": 13.58,
+        "group": "Innovation",
+        "cat_icon": "🚀"
+      },
+      {
+        "Ticker": "XLC",
+        "Name": "Communication",
+        "1D %": -0.07,
+        "1W %": -3.33,
+        "1M %": -1.53,
+        "3M %": 3.25,
+        "6M %": 8.2,
+        "1Y %": 13.72,
+        "group": "Tech",
+        "cat_icon": "🏛️"
+      },
+      {
+        "Ticker": "XBI",
+        "Name": "Biotech SPDR",
+        "1D %": -0.73,
+        "1W %": -2.17,
+        "1M %": 0.71,
+        "3M %": 14.38,
+        "6M %": 46.36,
+        "1Y %": 33.94,
+        "group": "Biotech",
+        "cat_icon": "🚀"
+      },
+      {
+        "Ticker": "XLK",
+        "Name": "Technology",
+        "1D %": 0.79,
+        "1W %": -2.08,
+        "1M %": -1.39,
+        "3M %": -1.47,
+        "6M %": 7.28,
+        "1Y %": 21.9,
+        "group": "Tech",
+        "cat_icon": "🏛️"
+      }
+    ]
+  },
+  "group_te": {
+    "price": {
+      "2W": [
+        {
+          "leader": "DM Europe",
+          "follower": "Biotech",
+          "direction": "DM Europe→Biotech",
+          "net_z": 4.08,
+          "lag": 2
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "EM Latam",
+          "direction": "DM Broad→EM Latam",
+          "net_z": 3.94,
+          "lag": 2
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "US Curve",
+          "direction": "DM Broad→US Curve",
+          "net_z": 3.71,
+          "lag": 1
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "Semiconductor",
+          "direction": "DM Europe→Semiconductor",
+          "net_z": 3.64,
+          "lag": 2
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "EM Bonds",
+          "direction": "DM Europe→EM Bonds",
+          "net_z": 3.48,
+          "lag": 1
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "EM Broad",
+          "direction": "DM Broad→EM Broad",
+          "net_z": 3.15,
+          "lag": 2
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "AI / Robotics",
+          "direction": "DM Broad→AI / Robotics",
+          "net_z": 3.15,
+          "lag": 1
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "Innovation",
+          "direction": "DM Broad→Innovation",
+          "net_z": 3.15,
+          "lag": 1
+        }
+      ],
+      "1M": [
+        {
+          "leader": "EM Broad",
+          "follower": "FX",
+          "direction": "EM Broad→FX",
+          "net_z": 4.5,
+          "lag": 1
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "Biotech",
+          "direction": "DM Europe→Biotech",
+          "net_z": 4.38,
+          "lag": 2
+        },
+        {
+          "leader": "AI / Robotics",
+          "follower": "Defensive",
+          "direction": "AI / Robotics→Defensive",
+          "net_z": 3.85,
+          "lag": 1
+        },
+        {
+          "leader": "Safe Haven",
+          "follower": "US Curve",
+          "direction": "Safe Haven→US Curve",
+          "net_z": 3.83,
+          "lag": 1
+        },
+        {
+          "leader": "EM Broad",
+          "follower": "Clean Energy",
+          "direction": "EM Broad→Clean Energy",
+          "net_z": 3.8,
+          "lag": 1
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "FX",
+          "direction": "DM Europe→FX",
+          "net_z": 3.39,
+          "lag": 1
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "Aggregate",
+          "direction": "DM Europe→Aggregate",
+          "net_z": 3.35,
+          "lag": 1
+        },
+        {
+          "leader": "Semiconductor",
+          "follower": "EM Latam",
+          "direction": "Semiconductor→EM Latam",
+          "net_z": 3.32,
+          "lag": 2
+        }
+      ],
+      "3M": [
+        {
+          "leader": "Safe Haven",
+          "follower": "Aggregate",
+          "direction": "Safe Haven→Aggregate",
+          "net_z": 4.04,
+          "lag": 2
+        },
+        {
+          "leader": "Safe Haven",
+          "follower": "Credit",
+          "direction": "Safe Haven→Credit",
+          "net_z": 3.89,
+          "lag": 2
+        },
+        {
+          "leader": "US Curve",
+          "follower": "Aggregate",
+          "direction": "US Curve→Aggregate",
+          "net_z": 3.85,
+          "lag": 1
+        },
+        {
+          "leader": "Safe Haven",
+          "follower": "China Tech",
+          "direction": "Safe Haven→China Tech",
+          "net_z": 3.83,
+          "lag": 1
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "Cyclical",
+          "direction": "DM Europe→Cyclical",
+          "net_z": 3.77,
+          "lag": 1
+        },
+        {
+          "leader": "US Curve",
+          "follower": "China Tech",
+          "direction": "US Curve→China Tech",
+          "net_z": 3.76,
+          "lag": 1
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "DM Asia-Pac",
+          "direction": "DM Europe→DM Asia-Pac",
+          "net_z": 3.38,
+          "lag": 1
+        },
+        {
+          "leader": "Safe Haven",
+          "follower": "Biotech",
+          "direction": "Safe Haven→Biotech",
+          "net_z": 3.37,
+          "lag": 1
+        }
+      ],
+      "6M": [
+        {
+          "leader": "US Curve",
+          "follower": "Commodities",
+          "direction": "US Curve→Commodities",
+          "net_z": 3.2,
+          "lag": 1
+        },
+        {
+          "leader": "US Curve",
+          "follower": "FX",
+          "direction": "US Curve→FX",
+          "net_z": 3.13,
+          "lag": 2
+        },
+        {
+          "leader": "US Curve",
+          "follower": "Credit",
+          "direction": "US Curve→Credit",
+          "net_z": 3.06,
+          "lag": 1
+        },
+        {
+          "leader": "DM Asia-Pac",
+          "follower": "EM Latam",
+          "direction": "DM Asia-Pac→EM Latam",
+          "net_z": 2.98,
+          "lag": 2
+        },
+        {
+          "leader": "DM Americas",
+          "follower": "Credit",
+          "direction": "DM Americas→Credit",
+          "net_z": 2.97,
+          "lag": 2
+        },
+        {
+          "leader": "Defensive",
+          "follower": "FX",
+          "direction": "Defensive→FX",
+          "net_z": 2.92,
+          "lag": 1
+        },
+        {
+          "leader": "DM Asia-Pac",
+          "follower": "FX",
+          "direction": "DM Asia-Pac→FX",
+          "net_z": 2.86,
+          "lag": 1
+        },
+        {
+          "leader": "EM Bonds",
+          "follower": "EM Asia",
+          "direction": "EM Bonds→EM Asia",
+          "net_z": 2.86,
+          "lag": 1
+        }
+      ]
+    },
+    "flow": {
+      "2W": [
+        {
+          "leader": "Tech",
+          "follower": "DM Broad",
+          "direction": "Tech→DM Broad",
+          "net_z": 4.43,
+          "lag": 2
+        },
+        {
+          "leader": "EM Latam",
+          "follower": "Cyclical",
+          "direction": "EM Latam→Cyclical",
+          "net_z": 4.08,
+          "lag": 1
+        },
+        {
+          "leader": "Tech",
+          "follower": "Biotech",
+          "direction": "Tech→Biotech",
+          "net_z": 3.96,
+          "lag": 2
+        },
+        {
+          "leader": "Tech",
+          "follower": "DM Europe",
+          "direction": "Tech→DM Europe",
+          "net_z": 3.39,
+          "lag": 2
+        },
+        {
+          "leader": "Tech",
+          "follower": "Commodities",
+          "direction": "Tech→Commodities",
+          "net_z": 3.28,
+          "lag": 2
+        },
+        {
+          "leader": "Rate-Sensitive",
+          "follower": "Defensive",
+          "direction": "Rate-Sensitive→Defensive",
+          "net_z": 3.26,
+          "lag": 2
+        },
+        {
+          "leader": "China Tech",
+          "follower": "Cyclical",
+          "direction": "China Tech→Cyclical",
+          "net_z": 3.17,
+          "lag": 1
+        },
+        {
+          "leader": "DM Europe",
+          "follower": "EM Broad",
+          "direction": "DM Europe→EM Broad",
+          "net_z": 2.91,
+          "lag": 1
+        }
+      ],
+      "1M": [
+        {
+          "leader": "Cyclical",
+          "follower": "Rate-Sensitive",
+          "direction": "Cyclical→Rate-Sensitive",
+          "net_z": 3.93,
+          "lag": 1
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "EM Asia",
+          "direction": "DM Broad→EM Asia",
+          "net_z": 3.77,
+          "lag": 2
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "Commodity",
+          "direction": "DM Broad→Commodity",
+          "net_z": 3.62,
+          "lag": 1
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "Defensive",
+          "direction": "DM Broad→Defensive",
+          "net_z": 3.45,
+          "lag": 1
+        },
+        {
+          "leader": "China Tech",
+          "follower": "EM Asia",
+          "direction": "China Tech→EM Asia",
+          "net_z": 3.14,
+          "lag": 2
+        },
+        {
+          "leader": "China Tech",
+          "follower": "EM Latam",
+          "direction": "China Tech→EM Latam",
+          "net_z": 3.13,
+          "lag": 2
+        },
+        {
+          "leader": "Inflation",
+          "follower": "Commodities",
+          "direction": "Inflation→Commodities",
+          "net_z": 3.03,
+          "lag": 2
+        },
+        {
+          "leader": "DM Broad",
+          "follower": "Innovation",
+          "direction": "DM Broad→Innovation",
+          "net_z": 3.02,
+          "lag": 1
+        }
+      ],
+      "3M": [
+        {
+          "leader": "EM Latam",
+          "follower": "Credit",
+          "direction": "EM Latam→Credit",
+          "net_z": 5.39,
+          "lag": 2
+        },
+        {
+          "leader": "EM Latam",
+          "follower": "Clean Energy",
+          "direction": "EM Latam→Clean Energy",
+          "net_z": 5.26,
+          "lag": 2
+        },
+        {
+          "leader": "EM Latam",
+          "follower": "Safe Haven",
+          "direction": "EM Latam→Safe Haven",
+          "net_z": 5.23,
+          "lag": 2
+        },
+        {
+          "leader": "EM Latam",
+          "follower": "Innovation",
+          "direction": "EM Latam→Innovation",
+          "net_z": 4.65,
+          "lag": 1
+        },
+        {
+          "leader": "Commodity",
+          "follower": "Credit",
+          "direction": "Commodity→Credit",
+          "net_z": 4.53,
+          "lag": 2
+        },
+        {
+          "leader": "EM Latam",
+          "follower": "DM Asia-Pac",
+          "direction": "EM Latam→DM Asia-Pac",
+          "net_z": 4.23,
+          "lag": 1
+        },
+        {
+          "leader": "Inflation",
+          "follower": "Safe Haven",
+          "direction": "Inflation→Safe Haven",
+          "net_z": 4.12,
+          "lag": 1
+        },
+        {
+          "leader": "EM Latam",
+          "follower": "Aggregate",
+          "direction": "EM Latam→Aggregate",
+          "net_z": 4.01,
+          "lag": 2
+        }
+      ],
+      "6M": [
+        {
+          "leader": "DM Americas",
+          "follower": "Innovation",
+          "direction": "DM Americas→Innovation",
+          "net_z": 4.83,
+          "lag": 2
+        },
+        {
+          "leader": "AI / Robotics",
+          "follower": "Innovation",
+          "direction": "AI / Robotics→Innovation",
+          "net_z": 4.3,
+          "lag": 1
+        },
+        {
+          "leader": "DM Americas",
+          "follower": "DM Broad",
+          "direction": "DM Americas→DM Broad",
+          "net_z": 4.26,
+          "lag": 2
+        },
+        {
+          "leader": "Rate-Sensitive",
+          "follower": "Innovation",
+          "direction": "Rate-Sensitive→Innovation",
+          "net_z": 4.0,
+          "lag": 2
+        },
+        {
+          "leader": "Aggregate",
+          "follower": "Safe Haven",
+          "direction": "Aggregate→Safe Haven",
+          "net_z": 3.97,
+          "lag": 2
+        },
+        {
+          "leader": "Commodities",
+          "follower": "DM Broad",
+          "direction": "Commodities→DM Broad",
+          "net_z": 3.88,
+          "lag": 1
+        },
+        {
+          "leader": "Clean Energy",
+          "follower": "Defensive",
+          "direction": "Clean Energy→Defensive",
+          "net_z": 3.81,
+          "lag": 2
+        },
+        {
+          "leader": "FX",
+          "follower": "Safe Haven",
+          "direction": "FX→Safe Haven",
+          "net_z": 3.71,
+          "lag": 2
+        }
+      ]
+    }
+  }
+};
+(function(data) {
+    showTimestamp(data.generated_at, data.data_date);
+
+    if (data.categories) {
+      renderFlowScoreboard(data.categories);
+      renderCategoryDetail(data.categories);
+    }
+
+    if (data.top_movers) renderTopMovers(data.top_movers);
+    if (data.kpi) renderKPI(data.kpi);
+    renderSignals(data.signals);
+    if (data.group_te) renderGroupTE(data.group_te);
+    renderBuyingEfficiency(data.buying_efficiency);
+
+    // Footer
+    const footer = document.getElementById('footer-note');
+    if (footer) {
+      footer.innerHTML = `데이터 연동 완료 | ${data.generated_at || ''} | ${data.data_date || 'N/A'}<br>` + footer.innerHTML;
+    }
+})(data);
+</script>
+</body>
+</html>
