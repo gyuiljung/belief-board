@@ -359,26 +359,32 @@ if (DATA.review_queue && DATA.review_queue.length > 0) {
 function renderThemes() {
   if (!DATA.themes || DATA.themes.length === 0) return;
   let html = '<h2>Themes (' + DATA.themes.length + ')</h2>';
-  DATA.themes.forEach(thm => {
+  DATA.themes.forEach((thm, ti) => {
     const core = thm.beliefs.filter(b => !b.is_sub);
     const sub = thm.beliefs.filter(b => b.is_sub);
     const window = thm.convergence_window ? ` | ${thm.convergence_window}` : '';
+    const themeBodyId = 'theme-body-' + ti;
 
     html += `<div class="theme-card">`;
-    html += `<h3>${thm.title} &mdash; Beliefs: ${thm.beliefs.length}${window}</h3>`;
+    html += `<div class="theme-header" onclick="toggleTheme('${themeBodyId}', this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">`;
+    html += `<h3 style="margin:0;">${thm.title} &mdash; ${thm.beliefs.length} beliefs${window}</h3>`;
+    html += `<span class="arrow" style="transition:transform 0.2s;font-size:0.8em;">&#x25B6;</span>`;
+    html += `</div>`;
+
+    html += `<div id="${themeBodyId}" style="display:none;margin-top:10px;">`;
     if (thm.content) html += `<div class="thesis">${esc(thm.content)}</div>`;
 
     if (core.length) {
       html += `<div style="margin-top:6px;color:var(--text-dim);font-size:0.85em;">Core:</div><div class="theme-beliefs">`;
       core.forEach(b => {
-        html += `<span class="theme-belief-tag tag-${b.status}" onclick="scrollToBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
+        html += `<span class="theme-belief-tag tag-${b.status}" onclick="event.stopPropagation();pinBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
       });
       html += `</div>`;
     }
     if (sub.length) {
       html += `<div style="margin-top:6px;color:var(--text-dim);font-size:0.85em;">Sub-Beliefs:</div><div class="theme-beliefs">`;
       sub.forEach(b => {
-        html += `<span class="theme-belief-tag tag-${b.status}" onclick="scrollToBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
+        html += `<span class="theme-belief-tag tag-${b.status}" onclick="event.stopPropagation();pinBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
       });
       html += `</div>`;
     }
@@ -387,9 +393,22 @@ function renderThemes() {
     if (thm.convergence_window) meta.push(`Convergence: <b>${thm.convergence_window}</b>`);
     if (thm.risk_type) meta.push(`Risk: <b>${thm.risk_type}</b>`);
     if (meta.length) html += `<div class="theme-meta">${meta.join(' | ')}</div>`;
-    html += `</div>`;
+    html += `</div>`; // theme body
+    html += `</div>`; // theme-card
   });
   document.getElementById("themes-section").innerHTML = html;
+}
+
+function toggleTheme(bodyId, header) {
+  const body = document.getElementById(bodyId);
+  const arrow = header.querySelector('.arrow');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    if (arrow) arrow.style.transform = 'rotate(90deg)';
+  } else {
+    body.style.display = 'none';
+    if (arrow) arrow.style.transform = 'rotate(0deg)';
+  }
 }
 
 // ─── Beliefs ───
@@ -410,18 +429,31 @@ function renderBeliefs() {
   else if (sort === "conf-low") filtered.sort((a, b) => a.confidence - b.confidence);
   else if (sort === "date-new") filtered.sort((a, b) => (b.created || "").localeCompare(a.created || ""));
 
+  // Pin selected belief to top
+  if (pinnedBeliefId) {
+    const pinIdx = filtered.findIndex(b => b.id === pinnedBeliefId);
+    if (pinIdx > 0) {
+      const [pinned] = filtered.splice(pinIdx, 1);
+      filtered.unshift(pinned);
+    }
+  }
+
   let html = '';
   filtered.forEach(b => {
     const color = confColor(b.confidence);
     const barW = Math.max(2, Math.round(b.confidence * 100));
     const supCount = b.breakdown.supporting.length;
     const conCount = b.breakdown.contradicting.length;
+    const isPinned = (b.id === pinnedBeliefId);
+    const pinnedStyle = isPinned ? 'border-color:var(--blue);box-shadow:0 0 12px rgba(52,152,219,0.3);' : '';
 
-    html += `<div class="belief-card" id="belief-${b.id}">`;
+    html += `<div class="belief-card" id="belief-${b.id}" style="${pinnedStyle}">`;
 
     // Header
     html += `<div class="belief-header">`;
-    html += `<div class="belief-title">${STATUS_EMOJI[b.status]||''} ${esc(b.title)}</div>`;
+    html += `<div class="belief-title">`;
+    if (isPinned) html += `<span onclick="pinBelief('${b.id}')" style="cursor:pointer;color:var(--blue);margin-right:6px;" title="Unpin">&#x1F4CC;</span>`;
+    html += `${STATUS_EMOJI[b.status]||''} ${esc(b.title)}</div>`;
     html += `<div class="belief-meta"><div class="belief-conf" style="color:${color}">${b.confidence.toFixed(2)}</div>`;
     html += `<span class="status-badge status-${b.status}">${b.status}</span>`;
     html += `<div style="color:var(--text-dim);font-size:0.8em">${b.created||'?'}</div></div>`;
@@ -519,27 +551,29 @@ function toggleCollapsible(id, header) {
   header.classList.toggle('open');
 }
 
-function scrollToBelief(id) {
-  const el = document.getElementById('belief-' + id);
-  if (el) {
-    // Make sure the belief is visible (activate its status filter if needed)
+let pinnedBeliefId = null;
+
+function pinBelief(id) {
+  // Toggle pin: if already pinned, unpin
+  if (pinnedBeliefId === id) {
+    pinnedBeliefId = null;
+  } else {
+    pinnedBeliefId = id;
+    // Ensure status filter includes this belief
     const belief = DATA.beliefs.find(b => b.id === id);
     if (belief && !activeFilters.has(belief.status)) {
       activeFilters.add(belief.status);
       document.querySelectorAll('.filter-btn').forEach(btn => {
         if (btn.dataset.status === belief.status) btn.classList.add('active');
       });
-      renderBeliefs();
     }
-    setTimeout(() => {
-      const target = document.getElementById('belief-' + id);
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        target.style.borderColor = 'var(--blue)';
-        setTimeout(() => { target.style.borderColor = ''; }, 2000);
-      }
-    }, 100);
   }
+  renderBeliefs();
+  // Scroll to top of beliefs section
+  setTimeout(() => {
+    const section = document.getElementById('beliefs-section');
+    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
 }
 
 function esc(s) {
