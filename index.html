@@ -103,6 +103,12 @@ a { color: var(--blue); text-decoration: none; }
   padding: 16px 20px;
   margin: 12px 0;
 }
+details.theme-card { cursor: pointer; }
+details.theme-card > summary { list-style: none; }
+details.theme-card > summary::-webkit-details-marker { display: none; }
+details.theme-card > summary::before { content: "▶ "; font-size: 0.8em; color: var(--text-dim); transition: transform 0.15s; display: inline-block; }
+details[open].theme-card > summary::before { content: "▼ "; }
+details.theme-card > summary h3 { display: inline; font-size: 1em; }
 .theme-card h3 { font-size: 1em; margin-bottom: 8px; }
 .theme-beliefs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .theme-belief-tag {
@@ -363,28 +369,23 @@ function renderThemes() {
     const core = thm.beliefs.filter(b => !b.is_sub);
     const sub = thm.beliefs.filter(b => b.is_sub);
     const window = thm.convergence_window ? ` | ${thm.convergence_window}` : '';
-    const themeBodyId = 'theme-body-' + ti;
 
-    html += `<div class="theme-card">`;
-    html += `<div class="theme-header" onclick="toggleTheme('${themeBodyId}', this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">`;
-    html += `<h3 style="margin:0;">${thm.title} &mdash; ${thm.beliefs.length} beliefs${window}</h3>`;
-    html += `<span class="arrow" style="transition:transform 0.2s;font-size:0.8em;">&#x25B6;</span>`;
-    html += `</div>`;
+    html += `<details class="theme-card">`;
+    html += `<summary class="theme-summary"><h3 style="margin:0;display:inline;">${thm.title} &mdash; ${thm.beliefs.length} beliefs${window}</h3></summary>`;
 
-    html += `<div id="${themeBodyId}" style="display:none;margin-top:10px;">`;
-    if (thm.content) html += `<div class="thesis">${esc(thm.content)}</div>`;
+    if (thm.content) html += `<div class="thesis" style="margin-top:10px;">${esc(thm.content)}</div>`;
 
     if (core.length) {
       html += `<div style="margin-top:6px;color:var(--text-dim);font-size:0.85em;">Core:</div><div class="theme-beliefs">`;
       core.forEach(b => {
-        html += `<span class="theme-belief-tag tag-${b.status}" onclick="event.stopPropagation();pinBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
+        html += `<span class="theme-belief-tag tag-${b.status}" onclick="pinBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
       });
       html += `</div>`;
     }
     if (sub.length) {
       html += `<div style="margin-top:6px;color:var(--text-dim);font-size:0.85em;">Sub-Beliefs:</div><div class="theme-beliefs">`;
       sub.forEach(b => {
-        html += `<span class="theme-belief-tag tag-${b.status}" onclick="event.stopPropagation();pinBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
+        html += `<span class="theme-belief-tag tag-${b.status}" onclick="pinBelief('${b.id}')">${STATUS_EMOJI[b.status]||''} ${b.title.substring(0,35)} (${b.confidence.toFixed(2)})</span>`;
       });
       html += `</div>`;
     }
@@ -393,22 +394,9 @@ function renderThemes() {
     if (thm.convergence_window) meta.push(`Convergence: <b>${thm.convergence_window}</b>`);
     if (thm.risk_type) meta.push(`Risk: <b>${thm.risk_type}</b>`);
     if (meta.length) html += `<div class="theme-meta">${meta.join(' | ')}</div>`;
-    html += `</div>`; // theme body
-    html += `</div>`; // theme-card
+    html += `</details>`;
   });
   document.getElementById("themes-section").innerHTML = html;
-}
-
-function toggleTheme(bodyId, header) {
-  const body = document.getElementById(bodyId);
-  const arrow = header.querySelector('.arrow');
-  if (body.style.display === 'none') {
-    body.style.display = 'block';
-    if (arrow) arrow.style.transform = 'rotate(90deg)';
-  } else {
-    body.style.display = 'none';
-    if (arrow) arrow.style.transform = 'rotate(0deg)';
-  }
 }
 
 // ─── Beliefs ───
